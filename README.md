@@ -24,20 +24,6 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 
 ## 🎯 Dual-Phase Operations Workflow
 
-
-               ┌─────────────────────────────────────────────────────────┐
-               │         Smart Facility Monitoring System (SFMS)        │
-               └────────────────────────────┬────────────────────────────┘
-                                            │
-                   ┌────────────────────────┴────────────────────────┐
-                   ▼                                                 ▼
-     [ 🚜 Phase 1: Under-Construction ]                [ 🏢 Phase 2: Post-Delivery ]
-   ├─ Fire & Smoke Hazard Detection                  ├─ Automatic License Plate Recognition (ALPR)
-   └─ Off-Hours Perimeter Intrusion                  ├─ 24/7 Fire & Smoke Facility Monitoring
-                                                     └─ Real-Time Web Security Alerts
-
-```
-
 ### 1. 🚜 Under-Construction Phase
 
 * **Fire & Smoke Hazard Detection:** Early warning detection for uncontained fires or smoke emissions across open construction zones and material storage yards.
