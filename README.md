@@ -4,7 +4,7 @@
 
 > **An AI-Driven Dual-Phase Computer Vision Solution for Construction Site Safety & Post-Delivery Automated Security.**
 
-[![Python](https://img.shields.io/badge/Python-3.12.13-blue?style=for-the-badge&logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.10.0-ee4c2c?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
 [![Django](https://img.shields.io/badge/Django-4.2%2B-092e20?style=for-the-badge&logo=django)](https://www.djangoproject.com/)
 [![YOLO](https://img.shields.io/badge/Ultralytics-YOLO-00FFFF?style=for-the-badge)](https://ultralytics.com/)
@@ -115,6 +115,10 @@ Smart-Facilities-Monitor-System/
 * Python 3.10+ installed
 * CUDA-enabled GPU (Recommended for real-time video inference)
 
+  
+### 🖥️ Environment & Runtime Details
+* **Model Training (Kaggle GPU Cluster):** Python `3.12`, PyTorch `2.10.0` (CUDA 12.8 enabled)
+* **Local Web Server & Inference:** Python `3.13` (Django Engine)
 ### 1️⃣ Clone the Repository
 
 ```bash
