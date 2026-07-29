@@ -24,17 +24,15 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 
 ## 🎯 Dual-Phase Operations Workflow
 
-### 1. 🚜 Under-Construction Phase
-
+### 1. 🏗️ Under-Construction Phase
+* **Heavy Vehicle & Truck ALPR Tracking:** Automated license plate recognition and logging for material delivery trucks, concrete mixers, and contractor vehicles entering the active construction site to secure the logistics chain and manage site access.
 * **Fire & Smoke Hazard Detection:** Early warning detection for uncontained fires or smoke emissions across open construction zones and material storage yards.
 * **Perimeter Intrusion Surveillance:** Monitors restricted entry points and off-limits construction areas during off-hours to prevent theft and unauthorized entry.
 
 ### 2. 🏢 Post-Delivery (Facility Management) Phase
-
-* **Automatic License Plate Recognition (ALPR):** Streamlined vehicle entry/exit management for tenants, visitors, and service units.
+* **Advanced Passenger Vehicle ALPR:** Streamlined vehicle entry/exit management for tenants, visitors, and service units, equipped with anti-cloning and plate-spoofing security checks.
 * **Continuous Safety Surveillance:** 24/7 automated fire and smoke detection across residential and commercial indoor/outdoor zones.
 * **Real-Time Security Dashboard:** Instant visual and audio alerts pushed directly to security operators via web socket channels.
-
 ---
 
 ## ✨ Key Features
