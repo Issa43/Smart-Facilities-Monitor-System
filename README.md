@@ -4,7 +4,7 @@
 
 > **An AI-Driven Dual-Phase Computer Vision Solution for Construction Site Safety & Post-Delivery Automated Security.**
 
-[![Python](https://img.shields.io/badge/Python-3.13.7%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.13%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
 [![Django](https://img.shields.io/badge/Django-4.2%2B-092e20?style=for-the-badge&logo=django)](https://www.djangoproject.com/)
 [![YOLO](https://img.shields.io/badge/Ultralytics-YOLO-00FFFF?style=for-the-badge)](https://ultralytics.com/)
