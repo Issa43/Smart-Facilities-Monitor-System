@@ -1,4 +1,3 @@
-```markdown
 <div align="center">
 
 # 🏗️ Smart Facility Monitoring System (SFMS)
@@ -25,7 +24,7 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 
 ## 🎯 Dual-Phase Operations Workflow
 
-```text
+
                ┌─────────────────────────────────────────────────────────┐
                │         Smart Facility Monitoring System (SFMS)        │
                └────────────────────────────┬────────────────────────────┘
