@@ -1,0 +1,39 @@
+services:
+  backend:
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+      COLLECT_STATIC: "0"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - .:/app
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+      - protected_media_data:/app/protected_media
+
+  postgres:
+    ports:
+      - "${POSTGRES_PORT_FORWARD:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_PORT_FORWARD:-6379}:6379"
+
+  celery_worker:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+    volumes:
+      - .:/app
+      - media_data:/app/media
+      - protected_media_data:/app/protected_media
+
+  celery_beat:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+    volumes:
+      - .:/app
+      - celery_beat_data:/var/lib/celery

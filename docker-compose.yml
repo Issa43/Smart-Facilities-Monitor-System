@@ -1,0 +1,162 @@
+name: sflms
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sflms-backend:latest
+    command: ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      CACHE_URL: redis://redis:6379/1
+      CHANNEL_REDIS_URL: redis://redis:6379/2
+      WAIT_FOR_SERVICES: "1"
+      RUN_MIGRATIONS: "1"
+      COLLECT_STATIC: "1"
+    expose:
+      - "8000"
+    volumes:
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+      - protected_media_data:/app/protected_media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-sflms_db}
+      POSTGRES_USER: ${DB_USER:-sflms_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  celery_worker:
+    image: sflms-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["celery", "-A", "config", "worker", "--loglevel=INFO"]
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      CACHE_URL: redis://redis:6379/1
+      CHANNEL_REDIS_URL: redis://redis:6379/2
+      WAIT_FOR_SERVICES: "1"
+      RUN_MIGRATIONS: "0"
+      COLLECT_STATIC: "0"
+    volumes:
+      - media_data:/app/media
+      - protected_media_data:/app/protected_media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$${HOSTNAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  celery_beat:
+    image: sflms-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      [
+        "celery",
+        "-A",
+        "config",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule=/var/lib/celery/celerybeat-schedule",
+      ]
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      CACHE_URL: redis://redis:6379/1
+      CHANNEL_REDIS_URL: redis://redis:6379/2
+      WAIT_FOR_SERVICES: "1"
+      RUN_MIGRATIONS: "0"
+      COLLECT_STATIC: "0"
+    volumes:
+      - celery_beat_data:/var/lib/celery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_data:
+  media_data:
+  protected_media_data:
+  celery_beat_data:
+
+networks:
+  sflms_internal:
+    driver: bridge
