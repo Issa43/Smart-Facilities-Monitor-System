@@ -1,0 +1,83 @@
+.wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-10) var(--space-8);
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: var(--space-8);
+}
+
+.brandName {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: var(--fw-extrabold);
+}
+
+.iconBox {
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  background: var(--primary-tint);
+  color: var(--primary-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-5);
+}
+
+.code {
+  font-family: var(--font-display);
+  font-size: 46px;
+  font-weight: var(--fw-extrabold);
+  color: var(--primary-dark);
+  line-height: 1;
+  margin-bottom: var(--space-3);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: var(--fw-bold);
+  margin-bottom: var(--space-3);
+}
+
+.body {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 2;
+  margin-bottom: var(--space-7);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.helpLink {
+  font-size: 12.5px;
+  font-weight: var(--fw-bold);
+  color: var(--primary-dark);
+}
+.helpLink:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,54 @@
+.bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-5);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bar::-webkit-scrollbar {
+  display: none;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 16px;
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition:
+    color var(--duration-base),
+    border-color var(--duration-base);
+}
+
+.trigger:hover {
+  color: var(--text);
+}
+
+.active {
+  color: var(--primary-dark);
+  border-bottom-color: var(--primary-dark);
+}
+
+.count {
+  font-size: 10.5px;
+  font-weight: var(--fw-bold);
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+}
+.active .count {
+  background: var(--primary-tint);
+  color: var(--primary-dark);
+}
+
+.panel {
+  animation: fade-in-up var(--duration-slow) var(--ease-out);
+}

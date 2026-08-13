@@ -1,0 +1,139 @@
+/* ==========================================================================
+   ANIMATIONS.CSS — Keyframes and motion utilities.
+
+   Keyframes must be global; CSS Modules would scope the names and break
+   every `animation:` reference in the component modules.
+
+   The reduced-motion block at the bottom is not optional. Never remove it.
+   ========================================================================== */
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes ring-sweep {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -56;
+  }
+}
+
+@keyframes data-flow {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes scan-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* RTL: toasts and drawers are anchored to the right, so they enter from the
+   left (negative X). One direction only — the app never runs LTR. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+/* ---------- Motion utility classes ---------- */
+.anim-pulse {
+  animation: soft-pulse 2s ease-in-out infinite;
+  transform-origin: center;
+}
+.anim-pulse-fast {
+  animation: soft-pulse 1.4s ease-in-out infinite;
+  transform-origin: center;
+}
+.anim-ring-sweep {
+  stroke-dasharray: 14 4;
+  animation: ring-sweep 6s linear infinite;
+}
+.anim-data-flow {
+  stroke-dasharray: 6 4;
+  animation: data-flow 1.6s linear infinite;
+}
+.anim-scan {
+  transform-origin: center;
+  animation: scan-rotate 4s linear infinite;
+}
+.anim-fade-in-up {
+  animation: fade-in-up var(--duration-slow) var(--ease-out) both;
+}
+
+/* Applied to page content on every route change. */
+.page-enter {
+  animation: fade-in-up var(--duration-slow) var(--ease-out) both;
+}
+
+/* ---------- Respect the OS reduced-motion preference ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

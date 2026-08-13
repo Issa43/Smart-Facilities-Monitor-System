@@ -1,0 +1,178 @@
+.wrap {
+  width: 100%;
+  direction: rtl;
+}
+
+/* ---------- Tooltip ---------- */
+.tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  padding: 10px 13px;
+  font-size: 12px;
+  direction: rtl;
+  min-width: 130px;
+}
+.tooltipLabel {
+  font-weight: var(--fw-bold);
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.tooltipRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+.tooltipSwatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2.5px;
+  flex-shrink: 0;
+}
+.tooltipValue {
+  margin-inline-start: auto;
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Legend ----------
+   Always present for 2+ series, so identity is never colour-alone. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: center;
+  margin-top: var(--space-3);
+}
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+}
+.legendSwatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2.5px;
+  flex-shrink: 0;
+}
+.legendValue {
+  color: var(--text);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Donut ---------- */
+.donutWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.donutCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+.donutValue {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: var(--fw-extrabold);
+  line-height: 1.1;
+}
+.donutLabel {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-top: 3px;
+}
+
+/* ---------- Progress ring ---------- */
+.ringWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ringSvg {
+  transform: rotate(-90deg);
+}
+.ringTrack {
+  fill: none;
+  stroke: var(--surface-alt);
+}
+.ringFill {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 900ms var(--ease-standard);
+}
+.ringCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.ringValue {
+  font-family: var(--font-display);
+  font-weight: var(--fw-extrabold);
+  line-height: 1;
+}
+.ringLabel {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 3px;
+}
+
+/* ---------- Horizontal comparison bars ---------- */
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(90px, 30%) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.barLabel {
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.barTrack {
+  height: 9px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--duration-slower) var(--ease-out);
+}
+.barValue {
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  min-width: 46px;
+  text-align: start;
+}

@@ -1,0 +1,67 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.success {
+  background: var(--success-tint);
+  color: var(--success-dark);
+}
+.success::before {
+  background: var(--success);
+}
+
+.warning {
+  background: var(--warning-tint);
+  color: var(--warning-dark);
+}
+.warning::before {
+  background: var(--warning);
+}
+
+.critical {
+  background: var(--critical-tint);
+  color: var(--critical-dark);
+}
+.critical::before {
+  background: var(--critical);
+}
+
+.info {
+  background: var(--info-tint);
+  color: var(--info-dark);
+}
+.info::before {
+  background: var(--info);
+}
+
+.neutral {
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+.neutral::before {
+  background: var(--border-strong);
+}
+
+/* Pulsing dot for genuinely live states — live alerts, recording cameras. */
+.live::before {
+  animation: soft-pulse 1.6s ease-in-out infinite;
+}
+
+.plain::before {
+  display: none;
+}

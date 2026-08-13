@@ -1,0 +1,122 @@
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: var(--fw-bold);
+  color: var(--text-faint);
+  padding-bottom: 6px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.blank {
+  aspect-ratio: 1;
+}
+
+.day {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px;
+  transition:
+    border-color var(--duration-fast),
+    background var(--duration-fast);
+}
+.day:hover {
+  border-color: var(--primary);
+  background: var(--primary-tint-soft);
+}
+
+.dayNumber {
+  font-size: 12.5px;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.hasEvents .dayNumber {
+  font-weight: var(--fw-bold);
+}
+
+.today {
+  border-color: var(--primary-dark);
+  border-width: 2px;
+}
+.today .dayNumber {
+  color: var(--primary-dark);
+  font-weight: var(--fw-extrabold);
+}
+
+.selected {
+  background: var(--primary-tint);
+  border-color: var(--primary-dark);
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 6px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.more {
+  font-size: 8.5px;
+  color: var(--text-faint);
+  font-weight: var(--fw-bold);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+}
+
+.todayBtn {
+  font-size: 11.5px;
+  font-weight: var(--fw-bold);
+  color: var(--primary-dark);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.todayBtn:hover:not(:disabled) {
+  background: var(--primary-tint);
+}
+.todayBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

@@ -1,0 +1,145 @@
+/* ==========================================================================
+   TOKENS.CSS — Design tokens (single source of truth)
+
+   Ported from the static prototype's variables.css. The visual identity is
+   unchanged; three tokens were deepened to reach WCAG AA contrast on white,
+   because they are used as *text* colors:
+
+     --primary-dark   #2E8BC0 -> #0A6FA8   3.77:1 -> 5.45:1
+     --accent-dark    #8B5CF6 -> #7C3AED   4.23:1 -> 5.70:1
+     --text-faint     #94A3B8 -> #64748B   2.56:1 -> 4.76:1
+     --text-muted     #64748B -> #4A5A6E   4.76:1 -> 7.05:1
+
+   The brand colors themselves (--primary #6EC6F4, --accent #A78BFA) are
+   untouched: they remain the fill/chart/illustration tones, where contrast
+   rules do not apply the same way.
+
+   No component file should hard-code a color, spacing, radius, shadow or
+   duration. Reference a variable here so the whole system retunes from one
+   file.
+   ========================================================================== */
+
+:root {
+  /* ---------- COLOR / SURFACES ---------- */
+  --bg-base: #f9fcff;
+  --surface: #ffffff;
+  --surface-alt: #f1f5f9;
+  --border: #e5e7eb;
+  --border-strong: #cbd5e1;
+
+  /* ---------- COLOR / PRIMARY (Smart Sky Blue) ----------
+     A ramp, not a single hue: light steps are fills, dark steps are text. */
+  --primary-tint-soft: #eff9fe; /* page washes, hover fills            */
+  --primary-tint: #ddf3ff; /* chips, active nav, KPI glow          */
+  --primary-mid: #b8e4fa; /* borders, chart gridlines             */
+  --primary: #6ec6f4; /* THE brand color — fills, charts      */
+  --primary-light: #67e8f9; /* cyan tech accent                     */
+  --primary-dark: #0a6fa8; /* 5.45:1 — text, icons, links, buttons */
+  --primary-darker: #08557f; /* 8.03:1 — hover / active              */
+
+  /* ---------- COLOR / ACCENT (Soft Premium Purple) ---------- */
+  --accent-tint: #f3e8ff;
+  --accent: #a78bfa; /* fills, the icon "connection node"    */
+  --accent-dark: #7c3aed; /* 5.70:1 — accent-colored text         */
+
+  /* ---------- COLOR / ICON GRAMMAR NEUTRALS ---------- */
+  --babyblue: #67e8f9; /* secondary icon stroke / live-data    */
+  --coolgray: #64748b; /* primary icon stroke                  */
+  --coolgray-soft: #cbd5e1; /* tertiary icon stroke                 */
+
+  /* ---------- COLOR / TEXT — a 13.6 / 7.05 / 4.76 ramp ---------- */
+  --text: #1e293b;
+  --text-muted: #4a5a6e;
+  --text-faint: #64748b;
+  --text-inverse: #ffffff;
+
+  /* ---------- COLOR / STATUS ----------
+     tint  = background fill    base = dot / bar / icon    dark = text (all >= 5.3:1) */
+  --success: #34d399;
+  --success-tint: #e4fbf2;
+  --success-dark: #0f7a54;
+  --warning: #fbbf24;
+  --warning-tint: #fef6e0;
+  --warning-dark: #92600a;
+  --critical: #fb7185;
+  --critical-tint: #ffeef0;
+  --critical-dark: #b3384a;
+  --info: #67e8f9;
+  --info-tint: #e8fbfe;
+  --info-dark: #0e7490;
+
+  /* ---------- TYPOGRAPHY ---------- */
+  --font-display: 'Cairo', system-ui, sans-serif; /* headings, KPI values, brand */
+  --font-body: 'IBM Plex Sans Arabic', system-ui, sans-serif; /* body, UI, data */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace; /* serials, IDs */
+
+  --fs-display: 28px;
+  --fs-h1: 24px;
+  --fs-h2: 20px;
+  --fs-h3: 16px;
+  --fs-body: 14px;
+  --fs-body-sm: 13px;
+  --fs-caption: 12px;
+  --fs-micro: 11px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-extrabold: 800;
+
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.75;
+
+  /* ---------- SPACING SCALE (4px base) ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---------- RADIUS ---------- */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+
+  /* ---------- SHADOW (sky-blue tinted, soft) ---------- */
+  --shadow-xs: 0 1px 2px rgba(110, 198, 244, 0.08);
+  --shadow-sm: 0 1px 3px rgba(110, 198, 244, 0.1);
+  --shadow-md: 0 10px 28px -10px rgba(110, 198, 244, 0.22);
+  --shadow-lg: 0 18px 44px -14px rgba(110, 198, 244, 0.26);
+  --shadow-focus: 0 0 0 3px var(--primary-tint);
+
+  /* ---------- MOTION ---------- */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+  --duration-slower: 400ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---------- Z-INDEX ---------- */
+  --z-sidebar: 20;
+  --z-topbar: 15;
+  --z-dropdown: 30;
+  --z-modal-backdrop: 40;
+  --z-modal: 41;
+  --z-toast: 50;
+  --z-command-palette: 60;
+
+  /* ---------- LAYOUT ---------- */
+  --sidebar-width: 264px;
+  --sidebar-width-collapsed: 84px;
+  --topbar-height: 68px;
+  --content-max-width: 1400px;
+}

@@ -1,0 +1,145 @@
+.scroll {
+  overflow-x: auto;
+}
+
+.chart {
+  min-width: 860px;
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+/* ---------- Header ---------- */
+.headRow {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: var(--space-4);
+  align-items: end;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+  padding-top: var(--space-5);
+}
+
+.headLabel {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: var(--fw-bold);
+}
+
+.headMonths {
+  display: flex;
+  position: relative;
+}
+
+.headMonth {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+}
+
+/* ---------- Project group ---------- */
+.groupRow {
+  padding: 12px 0 8px;
+}
+.groupName {
+  font-size: 12.5px;
+  font-weight: var(--fw-extrabold);
+  font-family: var(--font-display);
+  color: var(--primary-dark);
+}
+.groupName:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Stage row ---------- */
+.row {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: var(--space-4);
+  align-items: center;
+  padding: 5px 0;
+}
+
+.rowLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-inline-start: 12px;
+}
+.rowLabel:hover {
+  color: var(--primary-dark);
+}
+
+.track {
+  position: relative;
+  display: flex;
+  height: 26px;
+  align-items: center;
+}
+
+.cell {
+  flex: 1;
+  height: 100%;
+  border-inline-start: 1px solid var(--border);
+}
+.cell:last-child {
+  border-inline-end: 1px solid var(--border);
+}
+
+/* The faded outer bar is the full planned span; the solid inner fill is the
+   completed portion. One mark carries both facts.
+   The colour arrives as --bar-color inline, and color-mix derives the faded
+   track from it — nesting two opacities would not work. */
+.bar {
+  position: absolute;
+  height: 15px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--bar-color) 24%, transparent);
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--bar-color);
+}
+
+.todayLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-dark);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.todayLabel {
+  position: absolute;
+  top: -18px;
+  inset-inline-start: 50%;
+  transform: translateX(50%);
+  font-size: 9.5px;
+  font-weight: var(--fw-bold);
+  color: var(--accent-dark);
+  background: var(--accent-tint);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.outside {
+  position: absolute;
+  inset-inline-start: 8px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
