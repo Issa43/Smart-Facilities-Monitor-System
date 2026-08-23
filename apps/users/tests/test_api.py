@@ -1,7 +1,10 @@
+from io import BytesIO
 import uuid
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from PIL import Image
 from rest_framework import status
 
 from apps.users.models import Role, User
@@ -386,6 +389,30 @@ class TestUserEndpoint:
         response = api_client.get(url)
         assert response.status_code == status.HTTP_200_OK
         assert response.data["email"] == construction_manager_user.email
+
+    def test_me_endpoint_uploads_profile_image(self, api_client, construction_manager_user):
+        image_bytes = BytesIO()
+        Image.new("RGB", (2, 2), color="white").save(image_bytes, format="PNG")
+        api_client.force_authenticate(user=construction_manager_user)
+
+        response = api_client.patch(
+            reverse("user-me"),
+            {
+                "profile_image": SimpleUploadedFile(
+                    "avatar.png",
+                    image_bytes.getvalue(),
+                    content_type="image/png",
+                )
+            },
+            format="multipart",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        construction_manager_user.refresh_from_db()
+        assert construction_manager_user.profile_image.name.endswith("avatar.png")
+        construction_manager_user.profile_image.storage.delete(
+            construction_manager_user.profile_image.name
+        )
 
     def test_me_endpoint_cannot_change_role_or_status(
         self,

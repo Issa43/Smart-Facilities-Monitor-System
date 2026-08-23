@@ -1,12 +1,16 @@
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
 
 from apps.notifications.services import setting_enabled
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from apps.users.models import User
 
@@ -35,8 +39,12 @@ class SFLMSTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
 
         if self.user.status != User.STATUS_ACTIVE:
-            raise serializers.ValidationError(
+            raise AuthenticationFailed(
                 "This account is not active. Contact your Super Admin."
+            )
+        if not self.user.role_id:
+            raise AuthenticationFailed(
+                "This account has no assigned role. Contact your Super Admin."
             )
 
         data["user"] = {
@@ -46,6 +54,35 @@ class SFLMSTokenObtainPairSerializer(TokenObtainPairSerializer):
             "role": self.user.role.name if self.user.role_id else None,
         }
         return data
+
+
+class SFLMSTokenRefreshSerializer(TokenRefreshSerializer):
+    """Reject refresh tokens after account or password security changes."""
+
+    def validate(self, attrs):
+        refresh = self.token_class(attrs["refresh"])
+        user_id = refresh.get(api_settings.USER_ID_CLAIM)
+        try:
+            user = User.objects.select_related("role").get(
+                **{api_settings.USER_ID_FIELD: user_id}
+            )
+        except User.DoesNotExist as exc:
+            raise AuthenticationFailed("This account is no longer available.") from exc
+        if not user.is_active:
+            raise AuthenticationFailed(
+                "This account is not active. Contact your Super Admin."
+            )
+        if not user.role_id:
+            raise AuthenticationFailed(
+                "This account has no assigned role. Contact your Super Admin."
+            )
+        if api_settings.CHECK_REVOKE_TOKEN and refresh.get(
+            api_settings.REVOKE_TOKEN_CLAIM
+        ) != get_md5_hash_password(user.password):
+            raise AuthenticationFailed(
+                "This session was revoked after a password change."
+            )
+        return super().validate(attrs)
 
 
 class LogoutSerializer(serializers.Serializer):
@@ -81,6 +118,10 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"token": "This password reset link is invalid or expired."}
             ) from exc
+        if not default_token_generator.check_token(user, attrs["token"]):
+            raise serializers.ValidationError(
+                {"token": "This password reset link is invalid or expired."}
+            )
         if setting_enabled("security.passwordPolicy"):
             try:
                 validate_password(attrs["new_password"], user=user)

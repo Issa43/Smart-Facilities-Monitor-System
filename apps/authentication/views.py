@@ -6,7 +6,7 @@ from django.core.mail import send_mail
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -21,6 +21,7 @@ from .serializers import (
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     SFLMSTokenObtainPairSerializer,
+    SFLMSTokenRefreshSerializer,
 )
 
 
@@ -38,12 +39,14 @@ class RefreshView(TokenRefreshView):
     """POST /api/auth/refresh/  ->  { access, refresh (rotated) }"""
 
     permission_classes = [AllowAny]
+    serializer_class = SFLMSTokenRefreshSerializer
 
 
 class LogoutView(GenericAPIView):
     """POST /api/auth/logout/  { refresh } -> blacklists the refresh token."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+    authentication_classes = []
     serializer_class = LogoutSerializer
 
     def post(self, request):
@@ -112,14 +115,6 @@ class PasswordResetConfirmView(GenericAPIView):
         payload = PasswordResetConfirmSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         user = payload.validated_data["user"]
-        if not default_token_generator.check_token(
-            user,
-            payload.validated_data["token"],
-        ):
-            return Response(
-                {"token": ["This password reset link is invalid or expired."]},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         user.set_password(payload.validated_data["new_password"])
         user.save(update_fields=["password"])
         record_audit(
