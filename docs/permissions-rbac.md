@@ -49,6 +49,7 @@ Fixed at exactly four — adding a fifth is a breaking architectural change
 | Facilities | Full | read (own conversions) | assigned only | read (assigned) |
 | Assets/Maintenance/Faults | Full | none | assigned only | read only |
 | Cameras/Alerts/Incidents | Full | none | read only | assigned only |
+| Reports | Full | Construction for assigned Projects | Assets/Maintenance for assigned Facilities | Security for assigned Facilities |
 | Audit Logs | read only | none | none | none |
 
 ### Assignment tables (the object-level mechanism)
@@ -85,9 +86,17 @@ Project/Facility (e.g., a primary manager and a supervisor both assigned).
   not an oversight — document it as a new ADR before implementing.
 
 ## Current Implementation
-Layer 1 (`HasRole`, `IsSuperAdmin`, `IsSuperAdminForWrite`) implemented and
-tested. Layer 2 (Assignment tables) not yet implemented — no domain app
-exists yet to need it.
+Layer 1 (`HasRole`, `IsSuperAdmin`, `IsSuperAdminForWrite`) is implemented.
+Layer 2 is implemented through `ProjectAssignment` for Construction Manager
+APIs and `FacilityAssignment` for Operations Manager and Security Officer
+APIs. These API groups filter querysets by active assignments, with the Super
+Admin bypass applied first.
+
+The Phase 4.6 Reports API applies the same two layers. Template visibility is
+module-scoped; only Super Admin may create or update templates. Non-admin
+report requests must include an actively assigned `project_id` or
+`facility_id` appropriate to the role and are visible only to their creator.
+Super Admin retains the global module, request, and download bypass.
 
 ## Future Evolution
 `ProjectAssignment`/`FacilityAssignment` land in Phase 3/4 alongside

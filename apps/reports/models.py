@@ -11,11 +11,17 @@ from apps.common.models import BaseModel
 
 
 REPORT_MODULE_VALUES = (
+    "projects",
     "construction",
     "materials",
     "assets",
     "maintenance",
+    "faults",
+    "operational_performance",
     "security",
+    "users",
+    "alerts",
+    "response",
 )
 REPORT_FORMAT_VALUES = ("pdf", "excel")
 REPORT_STATUS_VALUES = ("queued", "processing", "completed", "failed")
@@ -35,18 +41,24 @@ def report_upload_path(instance, filename):
 
 class ReportTemplate(BaseModel):
     class Module(models.TextChoices):
+        PROJECTS = "projects", "Projects"
         CONSTRUCTION = "construction", "Construction"
         MATERIALS = "materials", "Materials"
         ASSETS = "assets", "Assets"
         MAINTENANCE = "maintenance", "Maintenance"
+        FAULTS = "faults", "Faults"
+        OPERATIONAL_PERFORMANCE = "operational_performance", "Operational performance"
         SECURITY = "security", "Security"
+        USERS = "users", "Users"
+        ALERTS = "alerts", "Security alerts"
+        RESPONSE = "response", "Incident response"
 
     class Format(models.TextChoices):
         PDF = "pdf", "PDF"
         EXCEL = "excel", "Excel"
 
     name = models.CharField(max_length=255)
-    module = models.CharField(max_length=20, choices=Module.choices)
+    module = models.CharField(max_length=32, choices=Module.choices)
     format = models.CharField(max_length=10, choices=Format.choices)
     configuration = models.JSONField(default=dict)
 
@@ -75,11 +87,17 @@ class ReportTemplate(BaseModel):
 
 class Report(BaseModel):
     class Module(models.TextChoices):
+        PROJECTS = "projects", "Projects"
         CONSTRUCTION = "construction", "Construction"
         MATERIALS = "materials", "Materials"
         ASSETS = "assets", "Assets"
         MAINTENANCE = "maintenance", "Maintenance"
+        FAULTS = "faults", "Faults"
+        OPERATIONAL_PERFORMANCE = "operational_performance", "Operational performance"
         SECURITY = "security", "Security"
+        USERS = "users", "Users"
+        ALERTS = "alerts", "Security alerts"
+        RESPONSE = "response", "Incident response"
 
     class Format(models.TextChoices):
         PDF = "pdf", "PDF"
@@ -92,7 +110,7 @@ class Report(BaseModel):
         FAILED = "failed", "Failed"
 
     type = models.CharField(max_length=100)
-    module = models.CharField(max_length=20, choices=Module.choices)
+    module = models.CharField(max_length=32, choices=Module.choices)
     parameters = models.JSONField(default=dict)
     file_path = models.FileField(
         upload_to=report_upload_path,
@@ -144,7 +162,7 @@ class Report(BaseModel):
         if self.status == self.Status.COMPLETED and not self.file_path:
             errors["file_path"] = "Completed reports require a generated file."
 
-        if self.file_path:
+        if self.file_path and (self._state.adding or not self.file_path._committed):
             metadata = inspect_attachment_file(self.file_path)
             expected_file_type = "pdf" if self.format == self.Format.PDF else "xlsx"
             if metadata.file_type != expected_file_type:

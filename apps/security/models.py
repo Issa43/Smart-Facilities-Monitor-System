@@ -9,11 +9,19 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.attachments.storage import get_protected_storage
-from apps.attachments.validators import inspect_attachment_file
+from apps.attachments.validators import inspect_attachment_file, validate_attachment_file
 from apps.common.models import BaseModel
 
 
-ALERT_TYPE_VALUES = ("fire", "smoke", "intrusion", "motion", "vehicle")
+ALERT_TYPE_VALUES = (
+    "fire",
+    "smoke",
+    "intrusion",
+    "motion",
+    "unauthorized_person",
+    "emergency",
+    "vehicle",
+)
 SECURITY_SEVERITY_VALUES = ("low", "medium", "high", "critical")
 ALERT_SOURCE_VALUES = ("ai_detection", "manual", "sensor")
 ALERT_STATUS_VALUES = ("new", "reviewed", "converted", "dismissed")
@@ -44,6 +52,8 @@ class SecurityAlert(BaseModel):
         SMOKE = "smoke", "Smoke"
         INTRUSION = "intrusion", "Intrusion"
         MOTION = "motion", "Motion"
+        UNAUTHORIZED_PERSON = "unauthorized_person", "Unauthorized Person"
+        EMERGENCY = "emergency", "Emergency"
         VEHICLE = "vehicle", "Vehicle"
 
     class Severity(models.TextChoices):
@@ -307,6 +317,14 @@ class IncidentAction(BaseModel):
         related_name="security_incident_actions",
     )
     taken_at = models.DateTimeField(default=timezone.now)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        "users.User",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="completed_incident_actions",
+    )
 
     class Meta(BaseModel.Meta):
         indexes = [
@@ -319,6 +337,13 @@ class IncidentAction(BaseModel):
             models.CheckConstraint(
                 check=~Q(action_taken=""),
                 name="incident_action_required",
+            ),
+            models.CheckConstraint(
+                check=(
+                    (Q(completed_at__isnull=True) & Q(completed_by__isnull=True))
+                    | (Q(completed_at__isnull=False) & Q(completed_by__isnull=False))
+                ),
+                name="incident_action_completion_fields_valid",
             ),
         ]
 
@@ -367,3 +392,85 @@ class IncidentAction(BaseModel):
 
     def __str__(self):
         return f"{self.incident} - {self.taken_at.isoformat()}"
+
+
+class IncidentNote(BaseModel):
+    incident = models.ForeignKey(Incident, on_delete=models.PROTECT, related_name="notes")
+    body = models.TextField()
+    author = models.ForeignKey("users.User", on_delete=models.PROTECT, related_name="security_incident_notes")
+
+    class Meta(BaseModel.Meta):
+        indexes = [models.Index(fields=["incident", "-created_at"], name="incident_note_time_idx")]
+        constraints = [models.CheckConstraint(check=~Q(body=""), name="incident_note_body_required")]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            original = self.__class__.all_objects.get(pk=self.pk)
+            if original.body != self.body or original.author_id != self.author_id:
+                raise ValidationError("Incident notes are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Incident notes cannot be hard-deleted.")
+
+
+class Camera(BaseModel):
+    class Status(models.TextChoices):
+        ONLINE = "online", "Online"
+        OFFLINE = "offline", "Offline"
+        DEGRADED = "degraded", "Degraded"
+        MAINTENANCE = "maintenance", "Maintenance"
+
+    facility = models.ForeignKey("facilities.Facility", on_delete=models.PROTECT, related_name="cameras")
+    asset = models.ForeignKey("assets.Asset", null=True, blank=True, on_delete=models.PROTECT, related_name="cameras")
+    code = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=255)
+    zone = models.CharField(max_length=255)
+    stream_reference = models.CharField(max_length=500, blank=True, default="")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OFFLINE)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(BaseModel.Meta):
+        indexes = [
+            models.Index(fields=["facility", "status"], name="camera_facility_status_idx"),
+            models.Index(fields=["-last_seen_at"], name="camera_last_seen_idx"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.asset_id and self.asset.facility_id != self.facility_id:
+            raise ValidationError({"asset": "The camera asset must belong to the camera facility."})
+
+
+def safety_document_upload_path(instance, filename):
+    extension = PurePosixPath(str(filename or "").replace("\\", "/")).suffix.lower()
+    return f"security/documents/{instance.facility_id}/{uuid.uuid4().hex}{extension}"
+
+
+class SafetyDocument(BaseModel):
+    class Category(models.TextChoices):
+        POLICY = "policy", "Policy"
+        PROCEDURE = "procedure", "Procedure"
+        PERMIT = "permit", "Permit"
+        REPORT = "report", "Report"
+
+    facility = models.ForeignKey("facilities.Facility", on_delete=models.PROTECT, related_name="safety_documents")
+    title = models.CharField(max_length=255)
+    category = models.CharField(max_length=20, choices=Category.choices)
+    file = models.FileField(upload_to=safety_document_upload_path, storage=get_protected_storage, validators=[validate_attachment_file])
+    original_file_name = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=127)
+    file_size = models.PositiveBigIntegerField()
+
+    class Meta(BaseModel.Meta):
+        indexes = [models.Index(fields=["facility", "category", "-created_at"], name="safety_doc_fac_cat_idx")]
+        constraints = [models.CheckConstraint(check=Q(file_size__gt=0), name="safety_document_size_positive")]
+
+    def save(self, *args, **kwargs):
+        if self.file and (self._state.adding or not self.file._committed):
+            metadata = inspect_attachment_file(self.file)
+            self.original_file_name = metadata.original_file_name
+            self.mime_type = metadata.mime_type
+            self.file_size = metadata.file_size
+        self.full_clean()
+        return super().save(*args, **kwargs)

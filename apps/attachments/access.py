@@ -39,8 +39,25 @@ def _authorize_project_scope(user, project):
         raise ProtectedAttachmentNotFound("Protected file parent not found.")
 
 
+def _authorize_security_facility_scope(user, facility):
+    if not getattr(facility, "is_active", False):
+        raise ProtectedAttachmentNotFound("Protected file parent not found.")
+    role_name = getattr(getattr(user, "role", None), "name", None)
+    if role_name == Role.SUPER_ADMIN:
+        return
+    if role_name != Role.SECURITY_OFFICER:
+        raise ProtectedAttachmentAccessDenied("Protected file access is forbidden.")
+    assignment_model = django_apps.get_model("facilities.FacilityAssignment")
+    if not assignment_model.objects.filter(
+        facility=facility,
+        user=user,
+        is_active=True,
+    ).exists():
+        raise ProtectedAttachmentNotFound("Protected file parent not found.")
+
+
 def authorize_attachment_download(user, attachment):
-    """Authorize access using global role plus active ProjectAssignment scope."""
+    """Authorize access using the target's active Project or Facility scope."""
     if not getattr(attachment, "is_active", False):
         raise ProtectedAttachmentNotFound("Attachment not found.")
 
@@ -51,21 +68,30 @@ def authorize_attachment_download(user, attachment):
             attachment.entity_type,
             attachment.entity_id,
         )
-        project = AttachmentEntityRegistry.resolve_project(
-            attachment.entity_type,
-            entity,
-        )
+        definition = AttachmentEntityRegistry.get_definition(attachment.entity_type)
     except (
         AttachmentEntityNotFound,
         UnsupportedAttachmentEntityType,
-        AttributeError,
     ) as exc:
         raise ProtectedAttachmentNotFound("Attachment parent not found.") from exc
 
-    if not getattr(project, "is_active", False):
-        raise ProtectedAttachmentNotFound("Attachment parent not found.")
-
-    _authorize_project_scope(user, project)
+    try:
+        if definition.project_path:
+            project = AttachmentEntityRegistry.resolve_project(
+                attachment.entity_type,
+                entity,
+            )
+            _authorize_project_scope(user, project)
+        elif definition.facility_path:
+            facility = AttachmentEntityRegistry.resolve_facility(
+                attachment.entity_type,
+                entity,
+            )
+            _authorize_security_facility_scope(user, facility)
+        else:
+            raise ProtectedAttachmentNotFound("Attachment parent not found.")
+    except AttributeError as exc:
+        raise ProtectedAttachmentNotFound("Attachment parent not found.") from exc
     return entity
 
 
@@ -83,11 +109,7 @@ def authorize_protected_file_download(user, instance):
     elif label == "projects.projectdocument":
         _authorize_project_scope(user, instance.project)
     elif label == "security.securityalert":
-        if not instance.facility.is_active:
-            raise ProtectedAttachmentNotFound("Protected file parent not found.")
-        role_name = getattr(getattr(user, "role", None), "name", None)
-        if role_name not in {Role.SUPER_ADMIN, Role.SECURITY_OFFICER}:
-            raise ProtectedAttachmentAccessDenied("Protected file access is forbidden.")
+        _authorize_security_facility_scope(user, instance.facility)
     elif label == "reports.report":
         role_name = getattr(getattr(user, "role", None), "name", None)
         if role_name != Role.SUPER_ADMIN and instance.created_by_id != user.pk:

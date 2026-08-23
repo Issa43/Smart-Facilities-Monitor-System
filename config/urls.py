@@ -25,9 +25,12 @@ urlpatterns = [
 
     path("admin/", admin.site.urls),
 
-    # ---- API v1 ----
+    # ---- Existing Phase 1 API routes ----
     path("api/auth/", include("apps.authentication.urls")),
     path("api/users/", include("apps.users.urls")),
+
+    # ---- Versioned domain API composition root ----
+    path("api/v1/", include("api.v1.urls", namespace="api_v1")),
 
     # ---- OpenAPI / Swagger documentation ----
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

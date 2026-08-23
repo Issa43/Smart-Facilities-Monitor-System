@@ -11,9 +11,9 @@ document covers the generation mechanism itself.
 
 ## Architecture
 
-### Async generation flow (specified, Phase 8)
+### Async generation flow
 ```
-POST /api/reports/generate/  { module, format, parameters }
+POST /api/v1/reports/requests/  { type, module, format, parameters, template? }
     │
     ▼
 Report row created, status="queued"
@@ -28,7 +28,7 @@ Task renders PDF (e.g., WeasyPrint/ReportLab) or Excel (e.g., openpyxl)
 Report.file_path set, status="completed" (or "failed" with logged reason)
     │
     ▼
-Notification sent to requesting user: "Your report is ready"
+Client polls the protected report-request resource until completion
 ```
 Reports are never generated synchronously inside a request — even a
 "small" report generation is a Celery task, for consistency and because
@@ -64,7 +64,10 @@ directly from `views.py` (see `coding-patterns.md` §Service Layer).
 `apps/reports/services.py` validates templates and parameters, derives rows
 from the owning domain models, renders PDF/XLSX files, stores them in protected
 storage, and updates lifecycle state transactionally. `apps/reports/tasks.py`
-provides the approved Celery boundary; no report API exists yet.
+provides the approved Celery boundary. The Phase 4.6 API under
+`api/v1/reports/` creates queued requests, dispatches that task, and exposes
+completed output only through an authorized download response. It never
+serializes `Report.file_path` or a storage URL.
 
 ## Future Evolution
 - Full Arabic shaping/font embedding remains deferred until an approved PDF

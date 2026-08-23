@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+.python_history
 *.sqlite3
 .env
 venv/
@@ -13,3 +14,5 @@ protected_media/
 *.log
 .vscode/
 .idea/
+.verification/
+.verification-schema.yml

@@ -19,13 +19,13 @@ class TestRoleModel:
 @pytest.mark.django_db
 class TestPermissionModel:
     def test_create_permission(self, role_super_admin):
-        perm = Permission.objects.create(role=role_super_admin, permission_name="project.create")
-        assert str(perm) == "super_admin:project.create"
+        perm = Permission.objects.create(role=role_super_admin, permission_name="test.project.create")
+        assert str(perm) == "super_admin:test.project.create"
 
     def test_unique_permission_per_role(self, role_super_admin):
-        Permission.objects.create(role=role_super_admin, permission_name="project.create")
+        Permission.objects.create(role=role_super_admin, permission_name="test.project.create")
         with pytest.raises(IntegrityError):
-            Permission.objects.create(role=role_super_admin, permission_name="project.create")
+            Permission.objects.create(role=role_super_admin, permission_name="test.project.create")
 
 
 @pytest.mark.django_db

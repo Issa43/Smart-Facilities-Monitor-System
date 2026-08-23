@@ -8,6 +8,9 @@ from django.utils import timezone
 
 from apps.facilities.models import Facility
 from apps.materials.models import MaterialRequest
+from apps.notifications.models import Notification
+from apps.notifications.services import notify_users
+from apps.notifications.services import setting_enabled
 
 from .models import (
     PhaseProgressLog,
@@ -137,7 +140,8 @@ def complete_project(*, project_id, actual_completion_date):
         .filter(project=project)
         .values_list("pk", flat=True)
     )
-    validate_project_completion(project)
+    if setting_enabled("workflow.blockCompletion"):
+        validate_project_completion(project)
 
     project.actual_completion_date = actual_completion_date
     project.status = Project.Status.COMPLETED
@@ -217,15 +221,25 @@ def record_phase_progress(
         raise ValidationError({"work_completed": "Completed work is required."})
 
     phase.current_progress = progress
-    phase.status = ProjectPhase.Status.IN_PROGRESS
+    approval_required = setting_enabled("workflow.requireApproval")
+    phase.status = (
+        ProjectPhase.Status.IN_PROGRESS
+        if approval_required or progress != Decimal("100.00")
+        else ProjectPhase.Status.COMPLETED
+    )
     if phase.actual_start_date is None:
         phase.actual_start_date = timezone.localdate()
+    if phase.status == ProjectPhase.Status.COMPLETED:
+        phase.actual_completion_date = timezone.localdate()
+        phase.approved_by = actor
     phase.full_clean()
     phase.save(
         update_fields=[
             "current_progress",
             "status",
             "actual_start_date",
+            "actual_completion_date",
+            "approved_by",
             "updated_at",
         ]
     )
@@ -305,6 +319,30 @@ def _review_phase(*, phase_id, actor, decision, disposition=None, reason=""):
     )
     review.full_clean()
     review.save()
+    recipients = [
+        assignment.user
+        for assignment in ProjectAssignment.objects.filter(
+            project=phase.project,
+            is_active=True,
+            user__status="active",
+        ).select_related("user")
+        if assignment.user_id != actor.pk
+    ]
+    notify_users(
+        recipients,
+        title="Construction phase reviewed",
+        body=f"{phase.name} is now {phase.get_status_display()}.",
+        category=Notification.Category.PROJECT,
+        tone=(
+            Notification.Tone.SUCCESS
+            if decision == PhaseReviewLog.Decision.APPROVED
+            else Notification.Tone.WARNING
+        ),
+        href=f"/construction/projects/{phase.project_id}/phases",
+        source=phase,
+        preference_field="stage_review",
+        system_setting_key="notify.stageReview",
+    )
     return review
 
 

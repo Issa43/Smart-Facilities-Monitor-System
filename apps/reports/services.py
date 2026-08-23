@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
 
-from .models import Report, ReportTemplate
+from .models import Report, ReportTemplate, validate_report_file
 
 
 MAX_PARAMETER_BYTES = 64 * 1024
@@ -20,6 +20,10 @@ MAX_REPORT_ROWS = 10_000
 MAX_REPORT_COLUMNS = 100
 TEMPLATE_CONFIGURATION_KEYS = {"title", "columns", "default_parameters"}
 DOMAIN_REPORT_COLUMNS = {
+    Report.Module.PROJECTS: (
+        "name", "facility_type", "location", "start_date",
+        "expected_completion_date", "actual_completion_date", "status",
+    ),
     Report.Module.CONSTRUCTION: (
         "project_id", "phase_id", "report_date", "weather_condition",
         "workers_count", "report_content", "issues",
@@ -36,9 +40,30 @@ DOMAIN_REPORT_COLUMNS = {
         "asset_id", "type", "priority", "description", "reason",
         "expected_execution_date", "actual_completion_date", "status",
     ),
+    Report.Module.FAULTS: (
+        "asset_id", "asset__facility_id", "fault_type", "description",
+        "severity", "status", "root_cause", "resolution", "reported_date",
+        "resolved_at",
+    ),
+    Report.Module.OPERATIONAL_PERFORMANCE: (
+        "id", "name", "location", "total_assets", "operational_assets",
+        "maintenance_assets", "out_of_service_assets", "average_health_score",
+    ),
     Report.Module.SECURITY: (
         "incident_number", "facility_id", "incident_type", "description",
         "location", "severity_level", "status", "closed_at",
+    ),
+    Report.Module.USERS: (
+        "full_name", "email", "username", "role__name", "status",
+        "last_login", "created_at",
+    ),
+    Report.Module.ALERTS: (
+        "facility_id", "alert_type", "location", "severity_level", "source",
+        "status", "is_false_positive", "created_at",
+    ),
+    Report.Module.RESPONSE: (
+        "incident__incident_number", "action_taken", "notes", "taken_by_id",
+        "taken_at", "completed_at",
     ),
 }
 
@@ -398,7 +423,7 @@ def _report_filters(report):
         for key, value in report.parameters.items()
         if not key.startswith("_")
     }
-    allowed = {"project_id", "facility_id", "status", "date_from", "date_to"}
+    allowed = {"project_id", "facility_id", "status", "date_from", "date_to", "period_label"}
     unknown = set(parameters) - allowed
     if unknown:
         raise ValidationError(
@@ -412,7 +437,19 @@ def build_domain_report_rows(report):
     parameters = _report_filters(report)
     columns = DOMAIN_REPORT_COLUMNS[report.module]
 
-    if report.module == Report.Module.CONSTRUCTION:
+    if report.module == Report.Module.PROJECTS:
+        from apps.projects.models import Project
+
+        queryset = Project.objects.all()
+        if parameters.get("project_id"):
+            queryset = queryset.filter(pk=parameters["project_id"])
+        if parameters.get("status"):
+            queryset = queryset.filter(status=parameters["status"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(created_at__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(created_at__date__lte=parameters["date_to"])
+    elif report.module == Report.Module.CONSTRUCTION:
         from apps.construction.models import DailyReport
 
         queryset = DailyReport.objects.all()
@@ -428,6 +465,10 @@ def build_domain_report_rows(report):
         queryset = Material.objects.all()
         if parameters.get("project_id"):
             queryset = queryset.filter(project_id=parameters["project_id"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(created_at__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(created_at__date__lte=parameters["date_to"])
     elif report.module == Report.Module.ASSETS:
         from apps.assets.models import Asset
 
@@ -436,6 +477,10 @@ def build_domain_report_rows(report):
             queryset = queryset.filter(facility_id=parameters["facility_id"])
         if parameters.get("status"):
             queryset = queryset.filter(current_status=parameters["status"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(created_at__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(created_at__date__lte=parameters["date_to"])
     elif report.module == Report.Module.MAINTENANCE:
         from apps.maintenance.models import MaintenanceOrder
 
@@ -452,7 +497,36 @@ def build_domain_report_rows(report):
             queryset = queryset.filter(
                 expected_execution_date__lte=parameters["date_to"]
             )
-    else:
+    elif report.module == Report.Module.FAULTS:
+        from apps.maintenance.models import Fault
+
+        queryset = Fault.objects.all()
+        if parameters.get("facility_id"):
+            queryset = queryset.filter(asset__facility_id=parameters["facility_id"])
+        if parameters.get("status"):
+            queryset = queryset.filter(status=parameters["status"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(reported_date__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(reported_date__date__lte=parameters["date_to"])
+    elif report.module == Report.Module.OPERATIONAL_PERFORMANCE:
+        from django.db.models import Avg, Count, Q
+        from apps.facilities.models import Facility
+
+        queryset = Facility.objects.annotate(
+            total_assets=Count("assets", filter=Q(assets__is_active=True), distinct=True),
+            operational_assets=Count("assets", filter=Q(assets__is_active=True, assets__current_status="operational"), distinct=True),
+            maintenance_assets=Count("assets", filter=Q(assets__is_active=True, assets__current_status="under_maintenance"), distinct=True),
+            out_of_service_assets=Count("assets", filter=Q(assets__is_active=True, assets__current_status="out_of_service"), distinct=True),
+            average_health_score=Avg("assets__health_score", filter=Q(assets__is_active=True)),
+        )
+        if parameters.get("facility_id"):
+            queryset = queryset.filter(pk=parameters["facility_id"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(created_at__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(created_at__date__lte=parameters["date_to"])
+    elif report.module == Report.Module.SECURITY:
         from apps.security.models import Incident
 
         queryset = Incident.objects.all()
@@ -464,6 +538,38 @@ def build_domain_report_rows(report):
             queryset = queryset.filter(created_at__date__gte=parameters["date_from"])
         if parameters.get("date_to"):
             queryset = queryset.filter(created_at__date__lte=parameters["date_to"])
+    elif report.module == Report.Module.USERS:
+        from apps.users.models import User
+
+        queryset = User.objects.select_related("role").all()
+        if parameters.get("status"):
+            queryset = queryset.filter(status=parameters["status"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(created_at__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(created_at__date__lte=parameters["date_to"])
+    elif report.module == Report.Module.ALERTS:
+        from apps.security.models import SecurityAlert
+
+        queryset = SecurityAlert.objects.all()
+        if parameters.get("facility_id"):
+            queryset = queryset.filter(facility_id=parameters["facility_id"])
+        if parameters.get("status"):
+            queryset = queryset.filter(status=parameters["status"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(created_at__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(created_at__date__lte=parameters["date_to"])
+    else:
+        from apps.security.models import IncidentAction
+
+        queryset = IncidentAction.objects.all()
+        if parameters.get("facility_id"):
+            queryset = queryset.filter(incident__facility_id=parameters["facility_id"])
+        if parameters.get("date_from"):
+            queryset = queryset.filter(taken_at__date__gte=parameters["date_from"])
+        if parameters.get("date_to"):
+            queryset = queryset.filter(taken_at__date__lte=parameters["date_to"])
 
     return list(queryset.order_by("created_at").values(*columns))
 
@@ -499,15 +605,21 @@ def complete_report_generation(*, report_id, content, extension):
     generated_file = ContentFile(content, name=f"report{extension}")
     saved_name = None
     try:
+        validate_report_file(generated_file)
         report.file_path.save(generated_file.name, generated_file, save=False)
         saved_name = report.file_path.name
         report.status = Report.Status.COMPLETED
-        report.full_clean()
+        # The generated content was validated before storage. Excluding the
+        # committed FieldFile avoids reopening and retaining an OS file handle
+        # during model validation (notably on Windows workers).
+        report.full_clean(exclude={"file_path"})
         report.save(update_fields=["file_path", "status", "updated_at"])
     except Exception:
         if saved_name:
             report.file_path.storage.delete(saved_name)
         raise
+    finally:
+        generated_file.close()
     return report
 
 

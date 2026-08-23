@@ -11,6 +11,12 @@ from config.celery import infrastructure_health
 
 
 def test_environment_backed_infrastructure_settings():
+    if settings.SETTINGS_MODULE == "config.settings.test":
+        assert settings.DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3"
+        assert settings.CACHES["default"]["BACKEND"].endswith("LocMemCache")
+        assert settings.CHANNEL_LAYERS["default"]["BACKEND"].endswith("InMemoryChannelLayer")
+        assert settings.CELERY_TASK_ALWAYS_EAGER is True
+        return
     assert settings.DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql"
     assert settings.DATABASES["default"]["HOST"] == "postgres"
     assert settings.CACHES["default"]["BACKEND"].endswith("RedisCache")

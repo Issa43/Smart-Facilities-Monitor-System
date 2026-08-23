@@ -3,6 +3,10 @@ from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from apps.notifications.models import Notification
+from apps.notifications.services import notify_users
+from apps.projects.models import ProjectAssignment
+
 from .models import Material, MaterialConsumptionRecord, MaterialRequest
 
 
@@ -134,4 +138,24 @@ def consume_material(*, material_id, quantity, actor, usage_date=None, phase=Non
         record.usage_date = usage_date
     record.full_clean()
     record.save()
+    if material.quantity_remaining <= material.min_stock_threshold:
+        managers = [
+            assignment.user
+            for assignment in ProjectAssignment.objects.filter(
+                project=material.project,
+                is_active=True,
+                user__status="active",
+            ).select_related("user")
+        ]
+        notify_users(
+            managers,
+            title="Low material stock",
+            body=f"{material.name} has reached its minimum stock threshold.",
+            category=Notification.Category.MATERIAL,
+            tone=Notification.Tone.WARNING,
+            href=f"/construction/materials/{material.pk}",
+            source=material,
+            preference_field="low_stock",
+            system_setting_key="notify.lowStock",
+        )
     return record

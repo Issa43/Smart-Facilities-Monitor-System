@@ -14,13 +14,13 @@ Cross-endpoint, cross-model workflows. Individual endpoint contracts are
 
 ### Workflow 1 — Construction → Facility conversion
 ```
-1. Super Admin/Construction Manager creates Project (status=Planning)
+1. Super Admin creates Project through the current API (status=Planning)
 2. Construction Manager (via ProjectAssignment) manages Phases,
    DailyReports, Materials as work progresses
 3. Final Phase reaches current_progress=100 → Project manually
    transitioned to status=Completed (not automatic)
 4. Authorized user calls the conversion action
-   (POST /api/projects/{id}/convert-to-facility/)
+   (POST /api/v1/projects/{id}/convert-to-facility/)
 5. services.convert_project_to_facility() runs:
    a. Creates Facility row
    b. Sets Facility.created_from_project = this Project
@@ -63,7 +63,7 @@ Cross-endpoint, cross-model workflows. Individual endpoint contracts are
    an existing open one) — see ai-engine.md
 3. Notification pushed to assigned Security Officers (facility broadcast)
 4. Security Officer reviews the Alert:
-   a. Genuine → POST /api/security/alerts/{id}/convert-to-incident/
+   a. Genuine → POST /api/v1/security/alerts/{id}/convert-to-incident/
       → Incident created (Incident.alert = this Alert),
         Alert.status = Converted
    b. False positive → Alert marked is_false_positive=True with
@@ -77,11 +77,11 @@ Cross-endpoint, cross-model workflows. Individual endpoint contracts are
 
 ### Workflow 5 — Login to authenticated request (cross-cutting)
 ```
-1. POST /api/auth/login/ → access + refresh tokens (see authentication.md)
+1. POST /api/v1/auth/login/ → access + refresh tokens (see authentication.md)
 2. Every subsequent request: Authorization: Bearer <access>
-3. On 401 (access expired): POST /api/auth/refresh/ → new access
+3. On 401 (access expired): POST /api/v1/auth/refresh/ → new access
    (+ rotated refresh) → retry original request
-4. On logout: POST /api/auth/logout/ { refresh } → refresh blacklisted
+4. On logout: POST /api/v1/auth/logout/ { refresh } → refresh blacklisted
 ```
 
 ## Business Rules
@@ -96,8 +96,18 @@ serializer `save()` overrides or view-method-only logic — see
 `coding-patterns.md` §Service Layer.
 
 ## Current Implementation
-None of these workflows have code yet (Phase 1 is access-control only).
-This document specifies the Phase 3–9 target sequences.
+The Phase 3 service layer implements Project completion and Facility
+conversion, maintenance and fault transitions, SecurityAlert/Incident
+workflows, and authentication. Phase 4 exposes the corresponding versioned
+Project, phase, Operations, and Security actions documented in
+`api-specification.md`.
+
+Workflow 3's `WorkExecutionLog` and `MaintenanceChecklist` steps remain future
+scope and are not exposed by the current API. Workflow 4's Camera, AI, and
+notification-producing steps also remain deferred; the current Security API
+starts at alert review/manual Incident creation and implements the downstream
+response lifecycle. DailyReport and Materials APIs referenced in Workflow 1
+are likewise not part of the completed Phase 4 route set.
 
 ## Future Evolution
 As each workflow is implemented, verify its actual code path against the

@@ -1,4 +1,10 @@
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
+
+from apps.notifications.services import setting_enabled
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -51,3 +57,36 @@ class LogoutSerializer(serializers.Serializer):
             token.blacklist()
         except Exception as exc:  # noqa: BLE001 - surfaced as a validation error below
             raise serializers.ValidationError({"refresh": "Invalid or already-used refresh token."}) from exc
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError(
+                {"confirm_password": "Passwords do not match."}
+            )
+        try:
+            user_id = force_str(urlsafe_base64_decode(attrs["uid"]))
+            user = User.objects.get(pk=user_id, status=User.STATUS_ACTIVE)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist) as exc:
+            raise serializers.ValidationError(
+                {"token": "This password reset link is invalid or expired."}
+            ) from exc
+        if setting_enabled("security.passwordPolicy"):
+            try:
+                validate_password(attrs["new_password"], user=user)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(
+                    {"new_password": exc.messages}
+                ) from exc
+        attrs["user"] = user
+        return attrs

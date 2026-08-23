@@ -2,11 +2,12 @@ from datetime import date
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from apps.assets.models import Asset
 from apps.assets.services import restore_asset_if_clear, transition_asset_status
 
-from .models import Fault, MaintenanceOrder
+from .models import Fault, MaintenanceOrder, MaintenanceTask
 
 
 def _locked_order(order_id):
@@ -102,6 +103,45 @@ def close_maintenance_order(*, order_id):
 
 
 @transaction.atomic
+def cancel_maintenance_order(*, order_id, actor, reason):
+    order = _locked_order(order_id)
+    if order.status not in {MaintenanceOrder.Status.OPEN, MaintenanceOrder.Status.ASSIGNED}:
+        raise ValidationError({"status": "Only an open or assigned order can be cancelled."})
+    if not (reason or "").strip():
+        raise ValidationError({"cancellation_reason": "A cancellation reason is required."})
+    order.status = MaintenanceOrder.Status.CANCELLED
+    order.cancelled_by = actor
+    order.cancelled_at = timezone.now()
+    order.cancellation_reason = reason.strip()
+    order.full_clean()
+    order.save(update_fields=["status", "cancelled_by", "cancelled_at", "cancellation_reason", "updated_at"])
+    restore_asset_if_clear(asset_id=order.asset_id)
+    return order
+
+
+@transaction.atomic
+def set_maintenance_execution_notes(*, order_id, notes):
+    order = _locked_order(order_id)
+    if order.status in {MaintenanceOrder.Status.CLOSED, MaintenanceOrder.Status.CANCELLED}:
+        raise ValidationError({"status": "Closed or cancelled orders cannot be edited."})
+    order.execution_notes = notes or ""
+    order.save(update_fields=["execution_notes", "updated_at"])
+    return order
+
+
+@transaction.atomic
+def set_maintenance_task_completion(*, order_id, task_id, actor, completed):
+    order = _locked_order(order_id)
+    if order.status not in {MaintenanceOrder.Status.ASSIGNED, MaintenanceOrder.Status.IN_PROGRESS}:
+        raise ValidationError({"status": "Tasks can only be updated on assigned or in-progress orders."})
+    task = MaintenanceTask.all_objects.select_for_update().get(pk=task_id, order=order, is_active=True)
+    task.completed_at = timezone.now() if completed else None
+    task.completed_by = actor if completed else None
+    task.save(update_fields=["completed_at", "completed_by", "updated_at"])
+    return task
+
+
+@transaction.atomic
 def begin_fault_investigation(*, fault_id, assigned_engineer=None):
     fault = _locked_fault(fault_id)
     _validate_active_asset(fault.asset)
@@ -141,10 +181,11 @@ def resolve_fault(*, fault_id, root_cause, resolution):
 
     fault.root_cause = root_cause
     fault.resolution = resolution
+    fault.resolved_at = timezone.now()
     fault.status = Fault.Status.RESOLVED
     fault.full_clean()
     fault.save(
-        update_fields=["root_cause", "resolution", "status", "updated_at"]
+        update_fields=["root_cause", "resolution", "resolved_at", "status", "updated_at"]
     )
     return fault
 

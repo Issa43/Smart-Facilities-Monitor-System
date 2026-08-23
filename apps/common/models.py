@@ -44,3 +44,18 @@ class BaseModel(models.Model):
     def soft_delete(self):
         self.is_active = False
         self.save(update_fields=["is_active", "updated_at"])
+
+
+class SystemSetting(BaseModel):
+    """Versioned, database-backed platform setting edited by Super Admin."""
+
+    key = models.CharField(max_length=100, unique=True)
+    value = models.JSONField()
+    description = models.TextField(blank=True, default="")
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta(BaseModel.Meta):
+        indexes = [models.Index(fields=["key"], name="system_setting_key_idx")]
+
+    def __str__(self):
+        return self.key

@@ -1,10 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from decimal import Decimal
+import unittest
 
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import close_old_connections, connections
+from django.db import close_old_connections, connection, connections
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
@@ -17,7 +18,7 @@ from apps.attachments.access import (
 )
 from apps.attachments.models import Attachment
 from apps.construction.models import DailyReport
-from apps.facilities.models import Facility
+from apps.facilities.models import Facility, FacilityAssignment
 from apps.maintenance.models import Fault, MaintenanceOrder
 from apps.maintenance.services import (
     begin_fault_investigation,
@@ -265,8 +266,15 @@ class Phase3DomainTestCase(TestCase):
         self.assertEqual(asset.current_status, Asset.Status.OPERATIONAL)
 
     def test_security_lifecycle_duplicate_conversion_and_action_closure_rule(self):
+        facility = self.make_facility()
+        FacilityAssignment.objects.create(
+            facility=facility,
+            user=self.security_user,
+            role_type=FacilityAssignment.RoleType.SECURITY_OFFICER,
+            created_by=self.admin,
+        )
         alert = SecurityAlert.objects.create(
-            facility=self.make_facility(),
+            facility=facility,
             alert_type=SecurityAlert.AlertType.INTRUSION,
             location="Gate",
             severity_level=SecurityAlert.Severity.HIGH,
@@ -405,6 +413,7 @@ class Phase3DomainTestCase(TestCase):
 class MaterialConcurrencyTests(TransactionTestCase):
     reset_sequences = False
 
+    @unittest.skipIf(connection.vendor == "sqlite", "Requires PostgreSQL row-level locking")
     def test_concurrent_consumption_cannot_overdraw_stock(self):
         role, _ = Role.objects.get_or_create(name=Role.SUPER_ADMIN)
         actor = User.objects.create_user(

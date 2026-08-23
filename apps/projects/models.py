@@ -39,7 +39,7 @@ PROJECT_ASSIGNMENT_ROLE_VALUES = (
     "supervisor",
     "viewer",
 )
-PROJECT_PHASE_PRIORITY_VALUES = ("low", "medium", "high")
+PROJECT_PHASE_PRIORITY_VALUES = ("low", "medium", "high", "critical")
 PROJECT_PHASE_STATUS_VALUES = (
     "not_started",
     "in_progress",
@@ -327,6 +327,7 @@ class ProjectPhase(BaseModel):
         LOW = "low", "Low"
         MEDIUM = "medium", "Medium"
         HIGH = "high", "High"
+        CRITICAL = "critical", "Critical"
 
     class Status(models.TextChoices):
         NOT_STARTED = "not_started", "Not Started"

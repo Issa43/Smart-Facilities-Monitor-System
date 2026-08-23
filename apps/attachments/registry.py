@@ -22,7 +22,8 @@ class AttachmentEntityDefinition:
     key: str
     label: str
     model_label: str
-    project_path: str
+    project_path: str | None = None
+    facility_path: str | None = None
 
 
 _ENTITY_DEFINITIONS = {
@@ -55,6 +56,18 @@ _ENTITY_DEFINITIONS = {
         label="Material consumption record",
         model_label="materials.MaterialConsumptionRecord",
         project_path="material__project",
+    ),
+    "incident": AttachmentEntityDefinition(
+        key="incident",
+        label="Incident",
+        model_label="security.Incident",
+        facility_path="facility",
+    ),
+    "incident_action": AttachmentEntityDefinition(
+        key="incident_action",
+        label="Incident action",
+        model_label="security.IncidentAction",
+        facility_path="incident__facility",
     ),
 }
 
@@ -93,7 +106,19 @@ class AttachmentEntityRegistry:
     @classmethod
     def resolve_project(cls, entity_type: str, entity: Any):
         definition = cls.get_definition(entity_type)
+        if not definition.project_path:
+            raise AttributeError(f"{entity_type} does not have Project scope.")
         project = entity
         for attribute in definition.project_path.split("__"):
             project = getattr(project, attribute)
         return project
+
+    @classmethod
+    def resolve_facility(cls, entity_type: str, entity: Any):
+        definition = cls.get_definition(entity_type)
+        if not definition.facility_path:
+            raise AttributeError(f"{entity_type} does not have Facility scope.")
+        facility = entity
+        for attribute in definition.facility_path.split("__"):
+            facility = getattr(facility, attribute)
+        return facility

@@ -11,6 +11,8 @@ services:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
+      SECURE_SSL_REDIRECT: "True"
+      SECURE_HSTS_SECONDS: "31536000"
       DB_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       CACHE_URL: redis://redis:6379/1

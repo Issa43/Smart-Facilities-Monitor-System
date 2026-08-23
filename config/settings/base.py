@@ -67,12 +67,14 @@ LOCAL_APPS = [
     "apps.maintenance.apps.MaintenanceConfig",
     "apps.security.apps.SecurityConfig",
     "apps.reports.apps.ReportsConfig",
+    "apps.notifications.apps.NotificationsConfig",
+    "apps.audit.apps.AuditConfig",
 ]
 
 # --- Apps planned by the approved architecture, added incrementally per phase ---
 # "apps.ai_engine"       # Phase 6
-# "apps.notifications"   # Phase 7
-# "apps.audit"           # Phase 9
+# Notifications and audit are registered because they are authoritative
+# cross-cutting domains used by every production workflow.
 
 INSTALLED_APPS = ASGI_APPS + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -86,6 +88,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.audit.middleware.ApiMutationAuditMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -169,6 +172,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 PROTECTED_MEDIA_ROOT = BASE_DIR / "protected_media"
+DATA_UPLOAD_MAX_MEMORY_SIZE = config(
+    "DATA_UPLOAD_MAX_MEMORY_SIZE", default=30 * 1024 * 1024, cast=int
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = config(
+    "FILE_UPLOAD_MAX_MEMORY_SIZE", default=5 * 1024 * 1024, cast=int
+)
 
 # Abstracted default storage backend - swappable for cloud storage later
 # without touching models or APIs (architecture §7).
@@ -207,6 +216,15 @@ REST_FRAMEWORK = {
         "rest_framework.filters.OrderingFilter",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": config("API_ANON_RATE", default="60/minute"),
+        "user": config("API_USER_RATE", default="600/minute"),
+        "password_reset": config("PASSWORD_RESET_RATE", default="5/minute"),
+    },
     "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
 }
@@ -246,6 +264,23 @@ CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
 
+# Password reset delivery. Production must configure an SMTP backend and a
+# frontend URL containing both ``{uid}`` and ``{token}`` placeholders.
+EMAIL_BACKEND = config(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="no-reply@sflms.local")
+EMAIL_HOST = config("EMAIL_HOST", default="localhost")
+EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
+FRONTEND_PASSWORD_RESET_URL = config(
+    "FRONTEND_PASSWORD_RESET_URL",
+    default="http://localhost:5173/reset-password?uid={uid}&token={token}",
+)
+
 # ---------------------------------------------------------------------------
 # Redis cache, Celery, and Channels infrastructure
 # ---------------------------------------------------------------------------
@@ -269,6 +304,16 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_TASK_DEFAULT_QUEUE = "default"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "notify-overdue-work-orders-daily": {
+        "task": "notifications.notify_overdue_work_orders",
+        "schedule": 24 * 60 * 60,
+    },
+    "notify-critical-security-alerts": {
+        "task": "notifications.notify_critical_security_alerts",
+        "schedule": 60.0,
+    },
+}
 
 CHANNEL_LAYERS = {
     "default": {

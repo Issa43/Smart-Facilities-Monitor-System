@@ -2,7 +2,11 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Incident, IncidentAction, SecurityAlert
+from apps.facilities.models import Facility
+from apps.notifications.models import Notification
+from apps.notifications.services import notify_user
+
+from .models import Incident, IncidentAction, IncidentNote, SecurityAlert
 
 
 def _require_active_actor(actor, field_name="actor"):
@@ -33,6 +37,63 @@ def _locked_incident(incident_id):
         .select_related("facility", "alert", "assigned_to")
         .get(pk=incident_id, is_active=True)
     )
+
+
+def _create_incident_record(
+    *,
+    facility,
+    actor,
+    incident_type,
+    description,
+    location,
+    severity_level,
+    assigned_to=None,
+    alert=None,
+):
+    _require_active_actor(actor)
+    _validate_assignee(assigned_to)
+    errors = {}
+    if not facility.is_active:
+        errors["facility"] = "The incident facility must be active."
+    if not (incident_type or "").strip():
+        errors["incident_type"] = "An incident type is required."
+    if not (description or "").strip():
+        errors["description"] = "An incident description is required."
+    if not (location or "").strip():
+        errors["location"] = "An incident location is required."
+    if severity_level not in Incident.Severity.values:
+        errors["severity_level"] = "A valid incident severity is required."
+    if errors:
+        raise ValidationError(errors)
+
+    incident = Incident(
+        facility=facility,
+        alert=alert,
+        incident_type=incident_type,
+        description=description,
+        location=location,
+        severity_level=severity_level,
+        assigned_to=assigned_to,
+        status=Incident.Status.OPEN,
+        created_by=actor,
+    )
+    incident.full_clean()
+    incident.save()
+    if assigned_to:
+        notify_user(
+            assigned_to,
+            title="Security incident assigned",
+            body=f"Incident {incident.incident_number} has been assigned to you.",
+            category=Notification.Category.SECURITY,
+            tone=(
+                Notification.Tone.CRITICAL
+                if incident.severity_level == Incident.Severity.CRITICAL
+                else Notification.Tone.WARNING
+            ),
+            href=f"/security/incidents/{incident.pk}",
+            source=incident,
+        )
+    return incident
 
 
 @transaction.atomic
@@ -103,13 +164,6 @@ def convert_alert_to_incident(
     description,
     assigned_to=None,
 ):
-    _require_active_actor(actor)
-    _validate_assignee(assigned_to)
-    if not (incident_type or "").strip():
-        raise ValidationError({"incident_type": "An incident type is required."})
-    if not (description or "").strip():
-        raise ValidationError({"description": "An incident description is required."})
-
     alert = _locked_alert(alert_id)
     if alert.status != SecurityAlert.Status.REVIEWED:
         raise ValidationError(
@@ -126,7 +180,7 @@ def convert_alert_to_incident(
             {"alert": "This security alert already has an incident."}
         )
 
-    incident = Incident(
+    incident = _create_incident_record(
         facility=alert.facility,
         alert=alert,
         incident_type=incident_type,
@@ -134,16 +188,39 @@ def convert_alert_to_incident(
         location=alert.location,
         severity_level=alert.severity_level,
         assigned_to=assigned_to,
-        status=Incident.Status.OPEN,
-        created_by=actor,
+        actor=actor,
     )
-    incident.full_clean()
-    incident.save()
 
     alert.status = SecurityAlert.Status.CONVERTED
     alert.full_clean()
     alert.save(update_fields=["status", "updated_at"])
     return incident
+
+
+@transaction.atomic
+def create_manual_incident(
+    *,
+    facility_id,
+    actor,
+    incident_type,
+    description,
+    location,
+    severity_level,
+    assigned_to=None,
+):
+    facility = Facility.all_objects.select_for_update(of=("self",)).get(
+        pk=facility_id,
+        is_active=True,
+    )
+    return _create_incident_record(
+        facility=facility,
+        actor=actor,
+        incident_type=incident_type,
+        description=description,
+        location=location,
+        severity_level=severity_level,
+        assigned_to=assigned_to,
+    )
 
 
 @transaction.atomic
@@ -185,6 +262,15 @@ def transfer_incident(*, incident_id, assigned_to):
     incident.status = Incident.Status.TRANSFERRED
     incident.full_clean()
     incident.save(update_fields=["assigned_to", "status", "updated_at"])
+    notify_user(
+        assigned_to,
+        title="Security incident transferred",
+        body=f"Incident {incident.incident_number} has been transferred to you.",
+        category=Notification.Category.SECURITY,
+        tone=Notification.Tone.WARNING,
+        href=f"/security/incidents/{incident.pk}",
+        source=incident,
+    )
     return incident
 
 
@@ -242,7 +328,40 @@ def record_incident_action(*, incident_id, actor, action_taken, notes=""):
         notes=notes or "",
         taken_by=actor,
         created_by=actor,
+        completed_at=timezone.now(),
+        completed_by=actor,
     )
     action.full_clean()
     action.save()
     return action
+
+
+@transaction.atomic
+def set_incident_action_completion(*, incident_id, action_id, actor, completed):
+    _require_active_actor(actor)
+    incident = _locked_incident(incident_id)
+    if incident.status == Incident.Status.CLOSED:
+        raise ValidationError({"status": "Closed incidents cannot change response actions."})
+    action = IncidentAction.all_objects.select_for_update().get(
+        pk=action_id,
+        incident=incident,
+        is_active=True,
+    )
+    action.completed_at = timezone.now() if completed else None
+    action.completed_by = actor if completed else None
+    action.full_clean()
+    action.save(update_fields=["completed_at", "completed_by", "updated_at"])
+    return action
+
+
+@transaction.atomic
+def record_incident_note(*, incident_id, actor, body):
+    _require_active_actor(actor, "author")
+    if not (body or "").strip():
+        raise ValidationError({"body": "An incident note is required."})
+    incident = _locked_incident(incident_id)
+    if incident.status == Incident.Status.CLOSED:
+        raise ValidationError({"status": "Notes cannot be added to a closed incident."})
+    note = IncidentNote(incident=incident, author=actor, created_by=actor, body=body.strip())
+    note.full_clean(); note.save()
+    return note

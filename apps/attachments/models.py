@@ -68,6 +68,16 @@ class Attachment(BaseModel):
                 name="attach_entity_target_idx",
             ),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(entity_type__in=ATTACHMENT_ENTITY_TYPES),
+                name="attachment_entity_type_allowed",
+            ),
+            models.CheckConstraint(
+                check=models.Q(file_size__gt=0),
+                name="attachment_file_size_gt_zero",
+            ),
+        ]
 
     def clean(self):
         super().clean()
@@ -128,16 +138,6 @@ class Attachment(BaseModel):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Attachments cannot be hard-deleted; use soft deletion.")
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(entity_type__in=ATTACHMENT_ENTITY_TYPES),
-                name="attachment_entity_type_allowed",
-            ),
-            models.CheckConstraint(
-                check=models.Q(file_size__gt=0),
-                name="attachment_file_size_gt_zero",
-            ),
-        ]
 
     def __str__(self):
         return f"{self.original_file_name} ({self.entity_type}:{self.entity_id})"

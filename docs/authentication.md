@@ -12,7 +12,7 @@ JWT issuance, validation, refresh, revocation. Does not cover *authorization*
 
 ### Login flow
 ```
-POST /api/auth/login/  { email, password }
+POST /api/v1/auth/login/  { email, password }
     │
     ▼
 SFLMSTokenObtainPairSerializer.validate()
@@ -30,11 +30,11 @@ so the frontend can render role-based UI without an immediate follow-up
   30 min via `.env`), sent as `Authorization: Bearer <token>` on every
   authenticated request.
 - **Refresh token**: longer-lived (`REFRESH_TOKEN_LIFETIME_DAYS`, default
-  7 days), used only against `/api/auth/refresh/`.
+  7 days), used only against `/api/v1/auth/refresh/`.
 - **Rotation**: `ROTATE_REFRESH_TOKENS=True` — every refresh call issues a
   *new* refresh token and blacklists the old one (`BLACKLIST_AFTER_ROTATION=True`).
   A stolen, already-used refresh token cannot be replayed.
-- **Logout**: `POST /api/auth/logout/ { refresh }` explicitly blacklists
+- **Logout**: `POST /api/v1/auth/logout/ { refresh }` explicitly blacklists
   that refresh token immediately, rather than waiting for it to be reused
   and rejected — this is a deliberate explicit-revocation step, not
   reliance on natural expiry.
@@ -76,6 +76,8 @@ Fully implemented: `apps/authentication/serializers.py`,
 `apps/authentication/views.py` (`LoginView`, `RefreshView`, `LogoutView`),
 tested in `apps/authentication/tests/test_auth.py` (login success/failure,
 suspended-account rejection, refresh, logout-blacklist-rejects-reuse).
+The canonical Phase 4 route prefix is `/api/v1/auth/`; legacy Phase 1 paths
+remain mounted for compatibility.
 
 ## Future Evolution
 - Password-reset-by-email is explicitly **not** implemented yet (needs an
