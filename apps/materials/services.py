@@ -88,6 +88,8 @@ def approve_material_request(request_id, *, actor):
         raise ValidationError({"actor": "The approving user must be active."})
     if material_request.created_by_id == actor.pk:
         raise ValidationError({"actor": "A requester cannot approve their own request."})
+    if material_request.status == MaterialRequest.Status.SUBMITTED:
+        _transition_request(request_id, MaterialRequest.Status.REVIEWED)
     return _transition_request(request_id, MaterialRequest.Status.APPROVED)
 
 
@@ -153,7 +155,7 @@ def consume_material(*, material_id, quantity, actor, usage_date=None, phase=Non
             body=f"{material.name} has reached its minimum stock threshold.",
             category=Notification.Category.MATERIAL,
             tone=Notification.Tone.WARNING,
-            href=f"/construction/materials/{material.pk}",
+            href=f"/construction/materials?material={material.pk}",
             source=material,
             preference_field="low_stock",
             system_setting_key="notify.lowStock",

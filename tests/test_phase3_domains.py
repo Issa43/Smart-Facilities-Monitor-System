@@ -19,7 +19,7 @@ from apps.attachments.access import (
 from apps.attachments.models import Attachment
 from apps.construction.models import DailyReport
 from apps.facilities.models import Facility, FacilityAssignment
-from apps.maintenance.models import Fault, MaintenanceOrder
+from apps.maintenance.models import Fault, MaintenanceOrder, MaintenanceTask
 from apps.maintenance.services import (
     begin_fault_investigation,
     close_fault,
@@ -61,6 +61,10 @@ from apps.security.services import (
     start_incident_investigation,
 )
 from apps.users.models import Role, User
+from api.v1.operations_manager.serializers import (
+    FacilityReadSerializer,
+    MaintenanceOrderReadSerializer,
+)
 
 
 class Phase3DomainTestCase(TestCase):
@@ -231,6 +235,59 @@ class Phase3DomainTestCase(TestCase):
         with self.assertRaises(ValidationError):
             consume_material(material_id=material.pk, quantity="7.000", actor=self.manager)
 
+    def test_material_request_can_be_approved_atomically_from_submitted(self):
+        project = self.make_project()
+        material = Material.objects.create(
+            project=project,
+            name="Aggregate",
+            unit=Material.Unit.TONNE,
+            quantity_required=Decimal("10.000"),
+            quantity_used=Decimal("0.000"),
+            quantity_remaining=Decimal("10.000"),
+            min_stock_threshold=Decimal("2.000"),
+            created_by=self.manager,
+        )
+        request = MaterialRequest.objects.create(
+            project=project,
+            material=material,
+            quantity_requested=Decimal("4.000"),
+            reason="Required",
+            priority=MaterialRequest.Priority.HIGH,
+            created_by=self.manager,
+        )
+
+        approve_material_request(request.pk, actor=self.admin)
+
+        request.refresh_from_db()
+        self.assertEqual(request.status, MaterialRequest.Status.APPROVED)
+
+    def test_self_approval_does_not_leave_request_reviewed(self):
+        project = self.make_project()
+        material = Material.objects.create(
+            project=project,
+            name="Blocks",
+            unit=Material.Unit.EACH,
+            quantity_required=Decimal("10.000"),
+            quantity_used=Decimal("0.000"),
+            quantity_remaining=Decimal("10.000"),
+            min_stock_threshold=Decimal("2.000"),
+            created_by=self.manager,
+        )
+        request = MaterialRequest.objects.create(
+            project=project,
+            material=material,
+            quantity_requested=Decimal("4.000"),
+            reason="Required",
+            priority=MaterialRequest.Priority.HIGH,
+            created_by=self.manager,
+        )
+
+        with self.assertRaises(ValidationError):
+            approve_material_request(request.pk, actor=self.manager)
+
+        request.refresh_from_db()
+        self.assertEqual(request.status, MaterialRequest.Status.SUBMITTED)
+
     def test_operations_lifecycles_keep_asset_consistent(self):
         asset = self.make_asset()
         transition_asset_status(
@@ -264,6 +321,53 @@ class Phase3DomainTestCase(TestCase):
         close_fault(fault_id=fault.pk)
         asset.refresh_from_db()
         self.assertEqual(asset.current_status, Asset.Status.OPERATIONAL)
+
+    def test_operations_read_contract_preserves_assignment_and_order_details(self):
+        facility = self.make_facility()
+        facility.operation_start_date = date.today()
+        facility.save(update_fields=["operation_start_date", "updated_at"])
+        FacilityAssignment.objects.create(
+            facility=facility,
+            user=self.manager,
+            role_type=FacilityAssignment.RoleType.OPERATIONS_MANAGER,
+            created_by=self.admin,
+        )
+        asset = Asset.objects.create(
+            facility=facility,
+            name="Generator",
+            asset_type="Electrical",
+            category="Generator",
+            serial_number="GEN-CONTRACT-1",
+            manufacturer="Maker",
+            model="G1",
+            location_inside_facility="Plant room",
+            installation_date=date.today(),
+            created_by=self.admin,
+        )
+        order = MaintenanceOrder.objects.create(
+            asset=asset,
+            type=MaintenanceOrder.Type.CORRECTIVE,
+            description="Repair",
+            reason="Failure",
+            execution_notes="Isolated safely",
+            expected_execution_date=date.today(),
+            created_by=self.admin,
+        )
+        task = MaintenanceTask.objects.create(
+            order=order,
+            sequence=1,
+            label="Isolate power",
+            created_by=self.admin,
+        )
+
+        facility_data = FacilityReadSerializer(facility).data
+        order_data = MaintenanceOrderReadSerializer(order).data
+
+        self.assertEqual(facility_data["operations_manager_id"], self.manager.pk)
+        self.assertEqual(facility_data["operation_start_date"], facility.operation_start_date.isoformat())
+        self.assertEqual(order_data["reference"], order.reference)
+        self.assertEqual(order_data["execution_notes"], "Isolated safely")
+        self.assertEqual(order_data["tasks"][0]["id"], str(task.pk))
 
     def test_security_lifecycle_duplicate_conversion_and_action_closure_rule(self):
         facility = self.make_facility()

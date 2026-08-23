@@ -338,7 +338,7 @@ def _review_phase(*, phase_id, actor, decision, disposition=None, reason=""):
             if decision == PhaseReviewLog.Decision.APPROVED
             else Notification.Tone.WARNING
         ),
-        href=f"/construction/projects/{phase.project_id}/phases",
+        href=f"/construction/stages/{phase.pk}",
         source=phase,
         preference_field="stage_review",
         system_setting_key="notify.stageReview",

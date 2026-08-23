@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Prefetch
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from api.v1.exceptions import DomainConflict
 from apps.assets.models import Asset
 from apps.assets.services import transition_asset_status
-from apps.facilities.models import Facility
+from apps.facilities.models import Facility, FacilityAssignment
 from apps.maintenance.models import Fault, MaintenanceOrder
 from apps.maintenance.services import (
     begin_fault_investigation,
@@ -80,6 +80,15 @@ class FacilityViewSet(ScopedOperationsMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return self.visible_facilities().select_related(
             "created_from_project", "created_by"
+        ).prefetch_related(
+            Prefetch(
+                "assignments",
+                queryset=FacilityAssignment.objects.filter(
+                    role_type=FacilityAssignment.RoleType.OPERATIONS_MANAGER,
+                    is_active=True,
+                ).order_by("created_at"),
+                to_attr="active_operations_assignments",
+            )
         )
 
     @action(detail=True, methods=["get"], url_path="monitoring")
@@ -218,7 +227,9 @@ class MaintenanceOrderViewSet(
     def get_queryset(self):
         return MaintenanceOrder.objects.filter(
             asset__facility__in=self.visible_facilities()
-        ).select_related("asset", "asset__facility", "assigned_to", "created_by")
+        ).select_related(
+            "asset", "asset__facility", "assigned_to", "created_by"
+        ).prefetch_related("tasks")
 
     def get_serializer_class(self):
         if self.action in {"create", "update", "partial_update"}:

@@ -23,6 +23,7 @@ def _raise_drf_validation(error):
 class FacilityReadSerializer(serializers.ModelSerializer):
     created_from_project_id = serializers.UUIDField(read_only=True)
     created_by_id = serializers.UUIDField(read_only=True)
+    operations_manager_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Facility
@@ -34,10 +35,20 @@ class FacilityReadSerializer(serializers.ModelSerializer):
             "location",
             "operation_start_date",
             "status",
+            "operations_manager_id",
             "created_by_id",
             "created_at",
             "updated_at",
         ]
+
+    def get_operations_manager_id(self, obj):
+        assignments = getattr(obj, "active_operations_assignments", None)
+        if assignments is None:
+            assignments = obj.assignments.filter(
+                role_type="operations_manager", is_active=True
+            ).order_by("created_at")
+        assignment = next(iter(assignments), None)
+        return assignment.user_id if assignment else None
 
 
 class AssetReadSerializer(serializers.ModelSerializer):

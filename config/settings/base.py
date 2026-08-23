@@ -280,6 +280,7 @@ FRONTEND_PASSWORD_RESET_URL = config(
     "FRONTEND_PASSWORD_RESET_URL",
     default="http://localhost:5173/reset-password?uid={uid}&token={token}",
 )
+PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT_SECONDS", default=1800, cast=int)
 
 # ---------------------------------------------------------------------------
 # Redis cache, Celery, and Channels infrastructure

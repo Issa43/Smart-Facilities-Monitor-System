@@ -10,6 +10,7 @@ from apps.facilities.models import Facility, FacilityAssignment
 from apps.projects.models import Project, ProjectAssignment
 from apps.reports.models import Report, ReportTemplate
 from apps.reports.services import create_report_request, create_report_template
+from apps.reports.tasks import _report_href
 from apps.users.models import User
 
 
@@ -80,6 +81,23 @@ def create_facility_assignment(*, actor, user, role_type, suffix):
 
 @pytest.mark.django_db
 class TestReportsAPI:
+    def test_report_notifications_use_valid_role_report_centres(
+        self,
+        role_super_admin,
+        role_construction_manager,
+        role_operations_manager,
+        role_security_officer,
+    ):
+        expectations = [
+            (role_super_admin, "/admin/reports"),
+            (role_construction_manager, "/construction/reports"),
+            (role_operations_manager, "/operations/reports"),
+            (role_security_officer, "/security/reports"),
+        ]
+        for index, (role, expected_href) in enumerate(expectations):
+            actor = create_user(role=role, suffix=f"report-link-{index}")
+            assert _report_href(create_report(actor=actor)) == expected_href
+
     def test_super_admin_can_manage_templates(self, api_client, super_admin_user):
         api_client.force_authenticate(user=super_admin_user)
         created = api_client.post(
