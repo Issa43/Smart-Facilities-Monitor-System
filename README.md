@@ -48,9 +48,9 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 
 | Detection Task | Model Architecture | Training Dataset | mAP@50 | Precision | Status |
 | --- | --- | --- | --- | --- | --- |
-| **Fire & Smoke Detection** | Custom YOLO-Medium | 11,000+ Images | **~79.0%** | **~80.0%** | 🟢 Production Ready |
-| **Perimeter Intrusion** | Custom YOLO | Custom Dataset | Operational | High | 🟡 Integration Phase |
-| **ALPR System** | YOLO + OCR Pipeline | Custom Dataset | Operational | High | 🟡 Integration Phase |
+| **Fire & Smoke Detection** | Custom YOLO-Medium | 11,000+ Images | **~79%** | **~80%** | 🟢 Production Ready |
+| **Perimeter Intrusion** | Custom YOLO_ | Custom Dataset | Operational | High | 🟡 Integration Phase |
+| **ALPR System** | Custom YOLO-Small + OCR Pipeline | 10,116 Images | **~98%** | **~95.0** |  🟢 Production Ready |
 
 ---
 
