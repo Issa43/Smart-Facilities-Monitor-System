@@ -4,8 +4,8 @@
 
 This project detects fire and smoke from a camera or video source using a trained Ultralytics YOLO model. The current implementation is split into focused modules:
 
-- `Main.py`: application entry point.
-- `local_test.py`: local OpenCV runtime, ROI selection, display, FPS, and orchestration.
+- `Main.py`: application entry point that imports and calls `main()` from `local_test.py`.
+- `local_test.py`: current local OpenCV runtime, ROI selection, display, FPS, and orchestration. It is kept for local testing until the Docker production entry point is created.
 - `detector.py`: YOLO inference and ROI filtering.
 - `video_source.py`: threaded video capture that keeps the latest frame.
 - `alert_manager.py`: temporal confirmation and cooldown logic.
@@ -19,14 +19,17 @@ Docker deployment is intentionally postponed. The current runtime uses an intera
 The current values are defined in `config.py`:
 
 ```python
-MODEL_PATH = 'best.pt'
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent
+MODEL_PATH = PROJECT_DIR / 'best.pt'
 DEVICE = 0
 VIDEO_SOURCE = 0
 BACKEND_ALERT_URL = None
 
 FRAME_SKIP = 5
 CONF_THRESHOLD = 0.378
-IMAGE_SIZE = 1024
+IMAGE_SIZE = 640
 WINDOW_SIZE = 6
 
 ALERT_THRESHOLD = {'Fire': 3, 'Smoke': 4}
@@ -35,7 +38,7 @@ COOLDOWN_SECONDS = 15
 
 Parameter meanings:
 
-- `MODEL_PATH`: trained YOLO weights.
+- `MODEL_PATH`: trained YOLO weights, resolved relative to `config.py` so the application does not depend on the current working directory.
 - `DEVICE`: Ultralytics device index. `0` means the first CUDA GPU; use `'cpu'` on a CPU-only system.
 - `VIDEO_SOURCE`: `0` means the default camera. It can also be a video filename, such as `Videos/VID_20250610_173239.mp4`.
 - `BACKEND_ALERT_URL`: HTTP endpoint for alerts. `None` disables network notifications.
@@ -46,7 +49,7 @@ Parameter meanings:
 - `ALERT_THRESHOLD`: required positive checks for each class.
 - `COOLDOWN_SECONDS`: minimum time between alerts for the same class.
 
-For the current Quadro M2200, `IMAGE_SIZE = 640` is a reasonable starting point. `1024` may improve detection of very small objects but is considerably more expensive.
+For the current Quadro M2200, `IMAGE_SIZE = 640` is the current setting. A smaller value such as `416` can improve speed, while `1024` may improve detection of very small objects but is considerably more expensive.
 
 ## Runtime Flow
 
@@ -126,7 +129,7 @@ When the URL is `None` or empty, notifications are disabled. HTTP, connection, a
 
 ## Display and Controls
 
-The detection window is created as a resizable OpenCV window with preserved aspect ratio and an initial size of `1280x720`. The displayed frame includes:
+The detection window is created as a resizable OpenCV window with preserved aspect ratio and an initial size of `800x450`. The displayed frame includes:
 
 - Fire and Smoke bounding boxes;
 - confidence values;
@@ -136,7 +139,7 @@ The detection window is created as a resizable OpenCV window with preserved aspe
 
 Press `q` to stop the application.
 
-The display size is independent from `IMAGE_SIZE`. A camera frame of `640x480` will not become a `1024x1024` display image merely because YOLO uses `IMAGE_SIZE = 1024`.
+The display size is independent from `IMAGE_SIZE`. A camera frame of `640x480` will not become a `640x640` display image merely because YOLO uses `IMAGE_SIZE = 640`.
 
 ## Cleanup
 
@@ -172,7 +175,7 @@ VIDEO_SOURCE = 'Videos/VID_20250610_173239.mp4'
 
 ## Current Limitations and Future Work
 
-- The model path is currently relative to the process working directory.
+- `Main.py` currently starts the local GUI implementation in `local_test.py`; a separate production `app.py` can be introduced during Dockerization.
 - The interactive ROI and OpenCV display require a graphical environment.
 - A Docker container will need explicit camera and NVIDIA GPU configuration.
 - A headless Docker deployment will need a replacement for `cv2.selectROI` and `cv2.imshow`.

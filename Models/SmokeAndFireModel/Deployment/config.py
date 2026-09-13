@@ -1,5 +1,9 @@
 
-MODEL_PATH = 'best.pt'
+from pathlib import Path
+
+
+PROJECT_DIR = Path(__file__).resolve().parent
+MODEL_PATH = PROJECT_DIR / 'best.pt'
 DEVICE = 0
 VIDEO_SOURCE = 0
 BACKEND_ALERT_URL = None

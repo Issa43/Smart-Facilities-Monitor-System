@@ -93,7 +93,7 @@ def main():
   has_roi = roi[2] > 0 and roi[3] > 0
   gpu_monitor = GpuMonitor()
   cv2.namedWindow('Detection', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-  cv2.resizeWindow('Detection', 1280, 720)
+  cv2.resizeWindow('Detection', 800, 450)
 
   frame_count = 0
   detections = []
