@@ -44,8 +44,8 @@ Metrics below are taken from the **best checkpoint** of each training run (the e
 
 | Detection Task | Architecture | Dataset | mAP@50 | mAP@50-95 | Precision | Recall | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Fire & Smoke Detection** | YOLO26-Medium | 11,000+ images | **78.8%** | 46.2% | 78.2% | 71.2% | 🟢 Trained |
-| **ALPR — Plate Detection (base)** | YOLO26-Nano | 10,116 images | **97.2%** | 66.6% | 98.9% | 94.7% | 🟢 Trained |
+| **Fire & Smoke Detection** | YOLO26-Medium | 11,000+ images | **78.8%** | 46.2% | 78.2% | 71.2% | 🟢 Deployed |
+| **ALPR — Plate Detection (base)** | YOLO26-Nano | 10,116 images | **97.2%** | 66.6% | 98.9% | 94.7% | 🔵 Base checkpoint for the fine-tune |
 | **ALPR — Syrian Plates (fine-tuned)** | YOLO26-Nano (transfer learning) | 393 images | **99.4%** | 81.2% | 99.3% | 97.6% | 🟢 Deployed |
 | **Perimeter Intrusion** | YOLO26-Nano | — | — | — | — | — | ⚪ Not in this repo yet |
 
@@ -53,7 +53,48 @@ Metrics below are taken from the **best checkpoint** of each training run (the e
 
 ---
 
-## 🖼️ Dashboard Preview
+## 🧠 Detection Pipelines
+
+Detection alone isn't enough for either use case — both pipelines add tracking, temporal confirmation, and domain logic on top of raw YOLO output so that a single bad frame can't produce a wrong result.
+
+### 🚗 ALPR — Plate Recognition
+
+| Stage | What it does |
+| --- | --- |
+| **Detect & track** | YOLO26n plate detection with ByteTrack, giving each plate a persistent ID across frames. |
+| **Read** | EasyOCR restricted to digits, run on a 5× upscaled crop enhanced with CLAHE + unsharp masking. |
+| **Parse** | Handles both Syrian plate layouts — wide (`15-14193`, a 2-digit and a 5-digit group) and tall (`541-5134`, 3 digits over 4) — selected by the plate box's aspect ratio. |
+| **Confirm** | Confidence-weighted voting over each track's reading history; a plate is only confirmed after several agreeing reads, so one bad frame can't decide the number. |
+| **Classify vehicle** | Each plate is matched to the smallest enclosing vehicle box from a COCO YOLO model, then smoothed by majority vote into `CAR` / `Truck`. |
+| **Direction** | Logs an **IN/OUT** crossing event when a tracked plate crosses a configurable virtual line, debounced over consecutive frames. |
+
+### 🔥 Fire & Smoke Detection
+
+| Stage | What it does |
+| --- | --- |
+| **Detect** | YOLO fire/smoke detection at a confidence threshold of `0.378`, chosen from the test-set F1 curve. |
+| **ROI filter** | Optional region of interest — a detection counts only when its box center falls inside the selected region. |
+| **Confirm** | An alert fires only after enough positive checks inside a rolling window (currently **3 of 6** for Fire, **4 of 6** for Smoke), preventing single-frame false alarms. |
+| **Cooldown** | Per-class cooldown (15s) so one ongoing event doesn't spam repeated alerts. |
+| **Deliver** | Threaded capture always serves the newest frame instead of stale buffered ones, and alerts are POSTed asynchronously so network latency never blocks detection. |
+
+---
+
+## 🖥️ Management Dashboard
+
+A full React + TypeScript application — **57 screens**, fully Arabic (RTL), running standalone on built-in fixture data with no backend required.
+
+| Area | Screens | Covers |
+| --- | :---: | --- |
+| **Construction** | 13 | Projects, stages, timeline, progress, materials & requests, daily reports, quality inspections, site photos, documents |
+| **Operations** | 12 | Facilities, assets & asset health, work orders, fault tracking, maintenance calendar, performance, operational reports |
+| **Security** | 12 | Alerts & alert history, incidents & analytics, camera monitoring, emergency monitoring, response center, safety documentation |
+| **Super Admin** | 10 | Users, roles matrix, projects, analytics, audit logs, system settings, reports |
+| **Auth / Shared** | 10 | Login, password reset, profile, notifications, reports, help |
+
+Access is role-based across four roles: `super_admin`, `construction_manager`, `operations_manager`, and `security_officer`.
+
+### 🖼️ Preview
 
 | Security Dashboard | Incident Analytics |
 | :---: | :---: |
