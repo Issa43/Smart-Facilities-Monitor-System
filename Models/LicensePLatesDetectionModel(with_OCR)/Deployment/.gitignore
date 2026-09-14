@@ -1,0 +1,8 @@
+# model weights (place your own locally, not committed)
+*.pt
+
+# test videos and generated output
+*.mp4
+
+# generated debug output
+debug_plates/
