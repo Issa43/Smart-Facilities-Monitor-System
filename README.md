@@ -6,9 +6,9 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.10.0-ee4c2c?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
-[![Django](https://img.shields.io/badge/Django-4.2%2B-092e20?style=for-the-badge&logo=django)](https://www.djangoproject.com/)
-[![YOLO](https://img.shields.io/badge/Ultralytics-YOLO-00FFFF?style=for-the-badge)](https://ultralytics.com/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![YOLO](https://img.shields.io/badge/Ultralytics-YOLO26-00FFFF?style=for-the-badge)](https://ultralytics.com/)
+[![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 
 </div>
 
@@ -18,7 +18,9 @@
 
 The **Smart Facility Monitoring System (SFMS)** is an end-to-end real-time computer vision platform engineered to bridge the operational gap between facility construction management and post-delivery facility operations.
 
-By integrating custom-trained deep learning object detection models (**YOLO**) with a dynamic **Django** web dashboard, SFMS provides continuous automated site surveillance, proactive hazard mitigation, and intelligent perimeter management.
+It combines custom-trained **YOLO** detection models with a full **React + TypeScript** management dashboard, providing continuous automated site surveillance, proactive hazard mitigation, and intelligent perimeter management.
+
+> **Current state:** the detection models and the web frontend are built and working independently. The backend layer that connects them is the remaining integration work — see the Roadmap at the bottom of this page.
 
 ---
 
@@ -30,28 +32,47 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 * **Perimeter Intrusion Surveillance:** Monitors restricted entry points and off-limits construction areas during off-hours to prevent theft and unauthorized entry.
 
 ### 2. 🏢 Post-Delivery (Facility Management) Phase
-* **Advanced Passenger Vehicle ALPR:** Streamlined vehicle entry/exit management for tenants, visitors, and service units, equipped with anti-cloning and plate-spoofing security checks.
+* **Advanced Passenger Vehicle ALPR:** Streamlined vehicle entry/exit management for tenants, visitors, and service units.
 * **Continuous Safety Surveillance:** 24/7 automated fire and smoke detection across residential and commercial indoor/outdoor zones.
-* **Real-Time Security Dashboard:** Instant visual and audio alerts pushed directly to security operators via web socket channels.
----
-
-## ✨ Key Features
-
-* 🚀 **High-Throughput Video Pipeline:** Low-latency inference optimized for multi-camera video feed streaming.
-* 🔥 **Robust Custom Models:** Custom-trained YOLO model evaluated on a diverse dataset of **11,000+ images**, achieving a **~79.0% mAP@50**.
-* 🛡️ **Advanced Data Augmentation:** Trained with Mosaic, Mixup, and HSV color-space adjustments for adaptability under dynamic outdoor lighting, smoke opacity, and environmental noise.
-* 🌐 **Centralized Web Dashboard:** Django-backed intuitive portal for active video monitoring, automated incident logging, and security analytics.
+* **Real-Time Security Dashboard:** Incident logging, analytics, and alerting for security operators.
 
 ---
 
 ## 📊 Model Performance Metrics
 
-| Detection Task | Model Architecture | Training Dataset | mAP@50 | Precision | Status |
-| --- | --- | --- | --- | --- | --- |
-| **Fire & Smoke Detection** | Custom YOLO-Medium | 11,000+ Images | **~79%** | **~80%** | 🟢 Production Ready |
-| **Perimeter Intrusion** | Custom YOLO_ | Custom Dataset | Operational | High | 🟡 Integration Phase |
-| **ALPR System** | Custom YOLO-Nano + OCR Pipeline | 10,116 Images | **~98%** | **~95.0** |  🟢 Production Ready |
-| **ALPR – Syrian Plates (Transfer Learning)** | YOLO26n (fine-tuned) | 393 Images | **~99.4%** | **~98.7%** | 🟢 Production Ready |
+Metrics below are taken from the **best checkpoint** of each training run (the epoch Ultralytics saves as `best.pt`), read directly from each run's `Results/Train/results.csv`.
+
+| Detection Task | Architecture | Dataset | mAP@50 | mAP@50-95 | Precision | Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **Fire & Smoke Detection** | YOLO26-Medium | 11,000+ images | **78.8%** | 46.2% | 78.2% | 71.2% | 🟢 Trained |
+| **ALPR — Plate Detection (base)** | YOLO26-Nano | 10,116 images | **97.2%** | 66.6% | 98.9% | 94.7% | 🟢 Trained |
+| **ALPR — Syrian Plates (fine-tuned)** | YOLO26-Nano (transfer learning) | 393 images | **99.4%** | 81.2% | 99.3% | 97.6% | 🟢 Deployed |
+| **Perimeter Intrusion** | YOLO26-Nano | — | — | — | — | — | ⚪ Not in this repo yet |
+
+**The fine-tuned Syrian-plates model is the one wired into the ALPR pipeline** — it was produced by taking the base plate detector as its starting checkpoint and fine-tuning it on a Syrian-plate–specific dataset, which lifted mAP@50-95 from 66.6% → 81.2%.
+
+---
+
+## 🖼️ Dashboard Preview
+
+| Security Dashboard | Incident Analytics |
+| :---: | :---: |
+| ![Security Dashboard](screenshots/05-security-dashboard.png) | ![Incident Analytics](screenshots/07-incident-analytics.png) |
+
+| Construction Dashboard | Maintenance Calendar |
+| :---: | :---: |
+| ![Construction Dashboard](screenshots/03-construction-dashboard.png) | ![Maintenance Calendar](screenshots/08-maintenance-calendar.png) |
+
+<details>
+<summary>More screens (login, admin, operations, timeline, roles, incident detail)</summary>
+
+| | |
+| :---: | :---: |
+| ![Login](screenshots/01-login.png) | ![Admin Dashboard](screenshots/02-admin-dashboard.png) |
+| ![Operations Dashboard](screenshots/04-operations-dashboard.png) | ![Construction Timeline](screenshots/06-construction-timeline.png) |
+| ![Roles Matrix](screenshots/09-roles-matrix.png) | ![Incident Detail](screenshots/10-incident-detail.png) |
+
+</details>
 
 ---
 
@@ -62,16 +83,20 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
                                          │
                                          ▼
                      [ YOLO Multi-Task Detection Engine ]
-                        ├── Fire & Smoke Detector
-                        ├── Perimeter Intrusion Detector
-                        └── License Plate Reader (ALPR)
+                        ├── Fire & Smoke Detector          (built)
+                        ├── License Plate Reader + OCR     (built)
+                        └── Perimeter Intrusion Detector   (planned)
                                          │
                                          ▼
-                     [ Django Backend & Web Dashboard ]
-                        ├── Live Stream Rendering
+                     [ Backend API & Event Store ]         (planned)
                         ├── Incident Event Logging
                         └── Alert Triggering System
-
+                                         │
+                                         ▼
+                     [ React Dashboard ]                   (built)
+                        ├── Security / Construction / Operations views
+                        ├── Incident analytics & reporting
+                        └── Role-based access
 ```
 
 ---
@@ -82,96 +107,83 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 Smart-Facilities-Monitor-System/
 ├── Models/
 │   ├── LicensePLatesDetectionModel(with_OCR)/
-│   │   ├── Deployment/
-│   │   ├── Results/
-│   │   └── TransferLearningOnSYDataset(Yolo26n)/
+│   │   ├── Deployment/                          # runnable ALPR pipeline
+│   │   ├── Results/                             # base model training/test results
+│   │   └── TransferLearningOnSYDataset(Yolo26n)/  # fine-tuning run + notebook
 │   └── SmokeAndFireModel/
-│       ├── Deployment/
-│       └── Results/
-├── Smart-Facility-Platform-main_Front_End/   # React/TypeScript dashboard frontend
-├── screenshots/
+│       ├── Deployment/                          # runnable fire/smoke pipeline
+│       └── Results/                             # training/test results
+├── Smart-Facility-Platform-main_Front_End/      # React + TypeScript dashboard
+├── screenshots/                                 # dashboard screenshots
 ├── .gitignore
 └── README.md
 ```
 
-> The Django backend (`apps/`, `core/`, `manage.py`) is not built yet — see the Roadmap below.
+Each model's `Deployment/` folder is self-contained and has its own README:
+* 🚗 [ALPR Deployment](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md)
+* 🔥 [Fire & Smoke Deployment](Models/SmokeAndFireModel/Deployment/README.md)
+
+> **Note:** trained `.pt` weights are not committed for the ALPR model — place your own `best.pt` in its `Deployment/` folder before running. See that folder's README.
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Deep Learning & Computer Vision:** PyTorch, Ultralytics YOLO, OpenCV
-* **Backend Framework:** Python, Django
-* **Frontend Interface:** HTML5, CSS3, JavaScript, Bootstrap
-* **Training & Hardware Infrastructure:** Kaggle GPU Clusters (CUDA)
+| Layer | Technologies |
+| --- | --- |
+| **Deep Learning / CV** | PyTorch, Ultralytics YOLO26, OpenCV, EasyOCR, ByteTrack |
+| **Frontend** | React 19, TypeScript, Vite, React Router 7, TanStack Query, Recharts, React Hook Form + Zod |
+| **Tooling** | oxlint, Prettier |
+| **Training Infrastructure** | Kaggle GPU clusters (CUDA 12.8), Python 3.12, PyTorch 2.10.0 |
+| **Local Inference** | Python 3.13, CUDA-enabled PyTorch |
+| **Backend** | *Not built yet — planned* |
 
 ---
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Run the Dashboard (Frontend)
 
-* Python 3.10+ installed
-* CUDA-enabled GPU (Recommended for real-time video inference)
-
-  
-### 🖥️ Environment & Runtime Details
-* **Model Training (Kaggle GPU Cluster):** Python `3.12`, PyTorch `2.10.0` (CUDA 12.8 enabled)
-* **Local Web Server & Inference:** Python `3.13` (Django Engine)
-### 1️⃣ Clone the Repository
+Requires **Node.js**. The dashboard runs standalone with built-in fixture data — no backend or database needed.
 
 ```bash
-git clone [https://github.com/Issa43/Smart-Facilities-Monitor-System.git](https://github.com/Issa43/Smart-Facilities-Monitor-System.git)
-cd Smart-Facilities-Monitor-System
-
+cd Smart-Facility-Platform-main_Front_End
+npm install
+npm run dev
 ```
 
-### 2️⃣ Create & Activate Virtual Environment
+> The frontend has its own detailed Arabic setup guide: [Smart-Facility-Platform-main_Front_End/README.md](Smart-Facility-Platform-main_Front_End/README.md)
+
+### Run a Detection Pipeline
+
+Requires **Python 3.10+** and a CUDA-enabled GPU for real-time performance.
 
 ```bash
-# On Linux/macOS
-python3 -m venv venv
-source venv/bin/activate
-
-# On Windows
-python -m venv venv
-venv\Scripts\activate
-
-```
-
-### 3️⃣ Install Dependencies
-
-```bash
+cd "Models/LicensePLatesDetectionModel(with_OCR)/Deployment"
 pip install -r requirements.txt
-
+python Main.py
 ```
 
-### 4️⃣ Run Django Server
-
-```bash
-python manage.py migrate
-python manage.py runserver
-
-```
-
-Open `http://127.0.0.1:8000/` in your browser to access the security dashboard.
+The same pattern applies to `Models/SmokeAndFireModel/Deployment`. Each pipeline opens an OpenCV window and runs against a local video/camera source configured in its `config.py`. Press **`q`** to stop.
 
 ---
 
 ## 🗺️ Roadmap
 
-* [x] Train & validate initial Fire & Smoke Detection Model (~79% mAP50).
-* [ ] Train Perimeter Intrusion and ALPR detection models.
-* [ ] Integrate multi-threaded OpenCV video stream handler into Django.
+* [x] Train & validate Fire & Smoke Detection model (78.8% mAP@50).
+* [x] Train ALPR plate-detection model (97.2% mAP@50).
+* [x] Fine-tune ALPR model on Syrian plates via transfer learning (99.4% mAP@50).
+* [x] Build ALPR inference pipeline (detection + tracking + OCR + vehicle type + IN/OUT crossing).
+* [x] Build Fire & Smoke inference pipeline (detection + ROI + alert confirmation).
+* [x] Build React dashboard frontend (60 screens, fully Arabic/RTL).
+* [ ] Train Perimeter Intrusion detection model.
+* [ ] Build backend API to connect the detection pipelines to the dashboard.
 * [ ] Implement WebSocket connection for real-time web notifications.
+* [ ] Replace interactive OpenCV windows with headless production entry points.
 * [ ] Deploy Docker containerization for production environments.
 
 ---
 
 ## 📜 License
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
-
-```
-
-```
+Distributed under the **MIT License**.
