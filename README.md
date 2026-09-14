@@ -79,21 +79,21 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 
 ```text
 Smart-Facilities-Monitor-System/
-├── apps/                     # Django web app modules (dashboard, alerts, feeds)
-├── core/                     # Core system settings and configurations
-├── models_weights/           # Trained model weights directory (.pt files local)
-├── scripts/                  # Computer vision pipelines and inference utilities
-│   ├── fire_detection.py
-│   ├── intrusion_detection.py
-│   └── alpr_pipeline.py
-├── static/                   # Frontend assets (CSS, JS, Images)
-├── templates/                # HTML templates for security dashboard
-├── .gitignore                # Git exclusion file
-├── manage.py                 # Django management script
-├── requirements.txt          # Python dependencies
-└── README.md                 # Project documentation
-
+├── Models/
+│   ├── LicensePLatesDetectionModel(with_OCR)/
+│   │   ├── Deployment/
+│   │   ├── Results/
+│   │   └── TransferLearningOnSYDataset(Yolo26n)/
+│   └── SmokeAndFireModel/
+│       ├── Deployment/
+│       └── Results/
+├── Smart-Facility-Platform-main_Front_End/   # React/TypeScript dashboard frontend
+├── screenshots/
+├── .gitignore
+└── README.md
 ```
+
+> The Django backend (`apps/`, `core/`, `manage.py`) is not built yet — see the Roadmap below.
 
 ---
 
