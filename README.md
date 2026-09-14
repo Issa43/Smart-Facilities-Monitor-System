@@ -50,7 +50,7 @@ By integrating custom-trained deep learning object detection models (**YOLO**) w
 | --- | --- | --- | --- | --- | --- |
 | **Fire & Smoke Detection** | Custom YOLO-Medium | 11,000+ Images | **~79%** | **~80%** | 🟢 Production Ready |
 | **Perimeter Intrusion** | Custom YOLO_ | Custom Dataset | Operational | High | 🟡 Integration Phase |
-| **ALPR System** | Custom YOLO-Small + OCR Pipeline | 10,116 Images | **~98%** | **~95.0** |  🟢 Production Ready |
+| **ALPR System** | Custom YOLO-Nano + OCR Pipeline | 10,116 Images | **~98%** | **~95.0** |  🟢 Production Ready |
 | **ALPR – Syrian Plates (Transfer Learning)** | YOLO26n (fine-tuned) | 393 Images | **~99.4%** | **~98.7%** | 🟢 Production Ready |
 
 ---
