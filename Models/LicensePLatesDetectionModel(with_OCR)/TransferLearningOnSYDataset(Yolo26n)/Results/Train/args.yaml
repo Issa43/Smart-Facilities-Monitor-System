@@ -10,7 +10,7 @@ imgsz: 1024
 save: true
 save_period: -1
 cache: true
-device: 1,0
+device: 0,1
 workers: 8
 project: Syrian_Plates_Project
 name: transfer_learning_run
