@@ -9,6 +9,7 @@
 [![YOLO](https://img.shields.io/badge/Ultralytics-YOLO26-00FFFF?style=for-the-badge)](https://ultralytics.com/)
 [![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 </div>
 
@@ -243,4 +244,4 @@ The same pattern applies to `Models/SmokeAndFireModel/Deployment`. Each pipeline
 
 ## 📜 License
 
-Distributed under the **MIT License**.
+Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
