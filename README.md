@@ -62,7 +62,7 @@ Split counts below are taken from the Ultralytics dataset-scan logs recorded in 
 | --- | --- | :---: | :---: | :---: | :---: | --- |
 | **Smoke & Fire** | Kaggle — [`sayedgamal99/smoke-fire-detection-yolo`](https://www.kaggle.com/datasets/sayedgamal99/smoke-fire-detection-yolo) | 14,101 | 3,094 | 4,295 | **21,490** | `Fire`, `Smoke` |
 | **License Plates (base)** | Kaggle — [`adilshamim8/license-plate-recognition`](https://www.kaggle.com/datasets/adilshamim8/license-plate-recognition) | 7,052 | 2,000 | 998 | **10,050** | `plate` |
-| **Syrian Plates** | Self-collected, manually annotated in Roboflow | 310 | 42 | 41 | **393** | `Syrian plate` |
+| **Syrian Plates** | Self-collected, manually annotated in Roboflow | 310 | 42 | 41 | **393** | `Syrian_Plate` |
 
 **Smoke & Fire — background images.** Of the 21,490 images, **9,837 are background frames** containing no fire or smoke (6,457 train / 1,375 val / 2,005 test), leaving **11,653 annotated images**. These negatives are deliberate: they teach the model what *isn't* fire, reducing false alarms on things like steam, dust, and sunset glare — which matters a lot for a system that pages a human on every alert.
 
