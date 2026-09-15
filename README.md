@@ -44,12 +44,28 @@ Metrics below are taken from the **best checkpoint** of each training run (the e
 
 | Detection Task | Architecture | Dataset | mAP@50 | mAP@50-95 | Precision | Recall | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Fire & Smoke Detection** | YOLO26-Medium | 11,000+ images | **78.8%** | 46.2% | 78.2% | 71.2% | 🟢 Deployed |
-| **ALPR — Plate Detection (base)** | YOLO26-Nano | 10,116 images | **97.2%** | 66.6% | 98.9% | 94.7% | 🔵 Base checkpoint for the fine-tune |
+| **Fire & Smoke Detection** | YOLO26-Medium | 21,490 images | **78.8%** | 46.2% | 78.2% | 71.2% | 🟢 Deployed |
+| **ALPR — Plate Detection (base)** | YOLO26-Nano | 10,050 images | **97.2%** | 66.6% | 98.9% | 94.7% | 🔵 Base checkpoint for the fine-tune |
 | **ALPR — Syrian Plates (fine-tuned)** | YOLO26-Nano (transfer learning) | 393 images | **99.4%** | 81.2% | 99.3% | 97.6% | 🟢 Deployed |
 | **Perimeter Intrusion** | YOLO26-Nano | — | — | — | — | — | ⚪ Not in this repo yet |
 
 **The fine-tuned Syrian-plates model is the one wired into the ALPR pipeline** — it was produced by taking the base plate detector as its starting checkpoint and fine-tuning it on a Syrian-plate–specific dataset, which lifted mAP@50-95 from 66.6% → 81.2%.
+
+---
+
+## 🗂️ Datasets
+
+Split counts below are taken from the Ultralytics dataset-scan logs recorded in each training notebook.
+
+| Dataset | Source | Train | Val | Test | Total | Classes |
+| --- | --- | :---: | :---: | :---: | :---: | --- |
+| **Smoke & Fire** | Kaggle — [`sayedgamal99/smoke-fire-detection-yolo`](https://www.kaggle.com/datasets/sayedgamal99/smoke-fire-detection-yolo) | 14,101 | 3,094 | 4,295 | **21,490** | `Fire`, `Smoke` |
+| **License Plates (base)** | Kaggle — [`adilshamim8/license-plate-recognition`](https://www.kaggle.com/datasets/adilshamim8/license-plate-recognition) | 7,052 | 2,000 | 998 | **10,050** | `plate` |
+| **Syrian Plates** | Self-collected, manually annotated in Roboflow | 310 | 42 | 41 | **393** | `plate` |
+
+**Smoke & Fire — background images.** Of the 21,490 images, **9,837 are background frames** containing no fire or smoke (6,457 train / 1,375 val / 2,005 test), leaving **11,653 annotated images**. These negatives are deliberate: they teach the model what *isn't* fire, reducing false alarms on things like steam, dust, and sunset glare — which matters a lot for a system that pages a human on every alert.
+
+**Syrian Plates — why so small works.** At 393 images this set is ~25× smaller than the base plate dataset, far too little to train a detector from scratch. Used as a **fine-tuning** set on top of the base detector, it still pushed mAP@50-95 from 66.6% → **81.2%**, because the base model already knew "what a plate looks like" and only needed to adapt to Syrian plate appearance. Images were gathered manually and annotated in Roboflow, with a ~79/11/10 train/val/test split.
 
 ---
 
