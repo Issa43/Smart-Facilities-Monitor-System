@@ -66,11 +66,71 @@ def run_ocr(image):
         digits = clean_digits(text)
         if not digits:
             continue
-        center_x = sum(p[0] for p in box) / len(box)
-        center_y = sum(p[1] for p in box) / len(box)
-        detections.append({"text": digits, "conf": float(conf), "x": center_x, "y": center_y})
+        xs = [p[0] for p in box]
+        ys = [p[1] for p in box]
+        detections.append({
+            "text": digits,
+            "conf": float(conf),
+            "x": sum(xs) / len(xs),
+            "y": sum(ys) / len(ys),
+            "x1": min(xs), "x2": max(xs),
+            "y1": min(ys), "y2": max(ys),
+        })
 
     return detections
+
+
+# ============================================================
+# GROUP DIGITS BY THE WIDEST GAP
+# ============================================================
+
+def split_at_largest_gap(items, axis):
+    """
+    Split detections into two groups at the widest blank gap along `axis`.
+
+    Locates the real separator (the emblem, or the row break) from the image
+    instead of assuming it sits at a fixed percentage of the plate.
+    """
+    if len(items) < 2:
+        return list(items), []
+
+    lo, hi = ("x1", "x2") if axis == "x" else ("y1", "y2")
+    ordered = sorted(items, key=lambda d: d[lo])
+
+    best_i = 0
+    best_gap = None
+    for i in range(len(ordered) - 1):
+        gap = ordered[i + 1][lo] - ordered[i][hi]
+        if best_gap is None or gap > best_gap:
+            best_gap = gap
+            best_i = i
+
+    return ordered[:best_i + 1], ordered[best_i + 1:]
+
+
+def read_in_order(items):
+    return "".join(d["text"] for d in sorted(items, key=lambda d: d["x1"]))
+
+
+def assemble_plate(items, axis, first_len, second_len):
+    if not items:
+        return None, 0.0
+
+    group_a, group_b = split_at_largest_gap(items, axis)
+    first = read_in_order(group_a)
+    second = read_in_order(group_b)
+    conf = float(np.mean([d["conf"] for d in items]))
+
+    if len(first) == first_len and len(second) == second_len:
+        return f"{first}-{second}", conf
+
+    # Gap landed in the wrong place, but if the digit count is still right the
+    # known plate format tells us where to split.
+    joined = first + second
+    if len(joined) == first_len + second_len:
+        return f"{joined[:first_len]}-{joined[first_len:]}", conf
+
+    return None, 0.0
 
 
 # ============================================================
@@ -127,6 +187,20 @@ def pick_best_window(text, target_len, base_conf):
 # ============================================================
 
 def extract_rectangle(plate):
+    # Tight per-group crops read more accurately, so they stay the primary path;
+    # the gap-based pass only runs when they fail (e.g. a plate layout whose
+    # separator doesn't sit where the fixed crops assume).
+    text, conf = extract_rectangle_fixed(plate)
+    if text:
+        return text, conf
+
+    scaled = cv2.resize(plate, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
+    h, w = scaled.shape[:2]
+    body = scaled[int(h * 0.08):int(h * 0.92), int(w * 0.02):int(w * 0.98)]
+    return assemble_plate(run_ocr(body), "x", 2, 5)
+
+
+def extract_rectangle_fixed(plate):
     h, w = plate.shape[:2]
     plate = cv2.resize(plate, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
     h, w = plate.shape[:2]
@@ -177,6 +251,17 @@ def extract_rectangle(plate):
 # ============================================================
 
 def extract_vertical(plate):
+    text, conf = extract_vertical_fixed(plate)
+    if text:
+        return text, conf
+
+    scaled = cv2.resize(plate, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
+    h, w = scaled.shape[:2]
+    body = scaled[int(h * 0.04):int(h * 0.97), int(w * 0.05):int(w * 0.95)]
+    return assemble_plate(run_ocr(body), "y", 3, 4)
+
+
+def extract_vertical_fixed(plate):
     h, w = plate.shape[:2]
     plate = cv2.resize(plate, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
     h, w = plate.shape[:2]
