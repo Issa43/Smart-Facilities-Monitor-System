@@ -79,11 +79,13 @@ Detection alone isn't enough for either use case — both pipelines add tracking
 | Stage | What it does |
 | --- | --- |
 | **Detect & track** | YOLO26n plate detection with ByteTrack, giving each plate a persistent ID across frames. |
-| **Read** | EasyOCR restricted to digits, run on a 5× upscaled crop enhanced with CLAHE + unsharp masking. |
-| **Parse** | Handles both Syrian plate layouts — wide (`15-14193`, a 2-digit and a 5-digit group) and tall (`541-5134`, 3 digits over 4) — selected by the plate box's aspect ratio. |
-| **Confirm** | Confidence-weighted voting over each track's reading history; a plate is only confirmed after several agreeing reads, so one bad frame can't decide the number. |
+| **Read** | PaddleOCR (PP-OCRv6 text-line recognizer). One-row plates are read as a single line; two-row plates are split and each row is read separately, with a deskewed copy tried for tilted plates. Reads below 0.85 confidence are rejected, because a missing read is safer than a wrong one. |
+| **Parse** | Handles both Syrian plate formats — permanent (`15-14193`, 2 + 5 digits) and temporary/customs (`541-5134`, 3 + 4 digits) — decided from the digits that were read (the emblem split on one-row plates, the bottom-row length on two-row plates) rather than from the box's aspect ratio. |
+| **Confirm** | Confidence-weighted voting over each track's reading history: a plate is confirmed after 3 agreeing reads and locked after 5. Vehicles are numbered by their confirmed plate, so a car the tracker splits into several tracks keeps a single ID. |
 | **Classify vehicle** | Each plate is matched to the smallest enclosing vehicle box from a COCO YOLO model, then smoothed by majority vote into `CAR` / `Truck`. |
 | **Direction** | Logs an **IN/OUT** crossing event when a tracked plate crosses a configurable virtual line, debounced over consecutive frames. |
+
+On the project's OCR evaluation set of 83 plate photos (47 distinct plates), the pipeline reads **96.4%** of plates exactly and makes **no incorrect reads**. Methodology, per-condition results, and runtime analysis are in the [ALPR Deployment README](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md).
 
 ### 🔥 Fire & Smoke Detection
 
@@ -189,7 +191,7 @@ Each model's `Deployment/` folder is self-contained and has its own README:
 
 | Layer | Technologies |
 | --- | --- |
-| **Deep Learning / CV** | PyTorch, Ultralytics YOLO26, OpenCV, EasyOCR, ByteTrack |
+| **Deep Learning / CV** | PyTorch, Ultralytics YOLO26, OpenCV, PaddleOCR (PP-OCRv6), ByteTrack |
 | **Frontend** | React 19, TypeScript, Vite, React Router 7, TanStack Query, Recharts, React Hook Form + Zod |
 | **Tooling** | oxlint, Prettier |
 | **Training Infrastructure** | Kaggle GPU clusters (CUDA 12.8), Python 3.12, PyTorch 2.10.0 |
@@ -222,7 +224,7 @@ pip install -r requirements.txt
 python Main.py
 ```
 
-The same pattern applies to `Models/SmokeAndFireModel/Deployment`. Each pipeline opens an OpenCV window and runs against a local video/camera source configured in its `config.py`. Press **`q`** to stop.
+The same pattern applies to `Models/SmokeAndFireModel/Deployment`. Each pipeline opens an OpenCV window and runs against a local video/camera source — configured in `paths.py` for ALPR (overridable through `ALPR_*` environment variables) and in `config.py` for fire/smoke. Press **`q`** to stop.
 
 ---
 

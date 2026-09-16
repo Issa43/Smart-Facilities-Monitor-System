@@ -1,8 +1,7 @@
 import os
 
-import cv2
-
 import config
+from image_io import imwrite_unicode
 
 if config.SAVE_DEBUG:
     os.makedirs(config.DEBUG_FOLDER, exist_ok=True)
@@ -19,5 +18,6 @@ def save_debug(plate, text, plate_type, track_id):
     debug_counter += 1
     if text is None:
         text = "NO_OCR"
-    filename = f"plate_{debug_counter:03d}_id{track_id}_{plate_type}_{text}.jpg"
-    cv2.imwrite(os.path.join(config.DEBUG_FOLDER, filename), plate)
+    # plate_type is the format category, and is None when the read failed.
+    filename = f"plate_{debug_counter:03d}_id{track_id}_{plate_type or 'unknown'}_{text}.jpg"
+    imwrite_unicode(os.path.join(config.DEBUG_FOLDER, filename), plate)

@@ -4,5 +4,6 @@
 # test videos and generated output
 *.mp4
 
-# generated debug output
+# generated debug output and annotated photos
 debug_plates/
+outputs/

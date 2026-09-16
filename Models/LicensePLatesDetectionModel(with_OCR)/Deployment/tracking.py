@@ -11,6 +11,7 @@ class TrackState:
         self.plate_type = ""
         self.stable_text = None
         self.stable_votes = 0
+        self.vehicle_id = None
         self.det_conf = 0.0
 
         # ---- direction tracking ----
@@ -26,6 +27,21 @@ class TrackState:
 
 
 tracks = {}
+
+# ByteTrack IDs aren't vehicle numbers: every one-frame false detection uses one
+# up, and one car gets several IDs as its plate is lost and found again (the test
+# video's only car was tracks 2, 5 and 6). Vehicles are numbered by plate text
+# instead -- 1, 2, 3... in the order their plates are read.
+vehicle_numbers = {}
+
+
+def vehicle_number(plate_text):
+    return vehicle_numbers.setdefault(plate_text, len(vehicle_numbers) + 1)
+
+
+def reset_tracks():
+    tracks.clear()
+    vehicle_numbers.clear()
 
 
 def cleanup_stale_tracks(current_frame):
