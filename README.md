@@ -4,7 +4,7 @@
 
 > **An AI-Driven Dual-Phase Computer Vision Solution for Construction Site Safety & Post-Delivery Automated Security.**
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10--3.13-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.10.0-ee4c2c?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
 [![YOLO](https://img.shields.io/badge/Ultralytics-YOLO26-00FFFF?style=for-the-badge)](https://ultralytics.com/)
 [![PaddleOCR](https://img.shields.io/badge/PaddleOCR-PP--OCRv6-2932E1?style=for-the-badge)](https://github.com/PaddlePaddle/PaddleOCR)
@@ -29,13 +29,13 @@ It combines custom-trained **YOLO26** detection models — for fire and smoke, a
 ## 🎯 Dual-Phase Operations Workflow
 
 ### 1. 🏗️ Under-Construction Phase
-* **Heavy Vehicle & Truck ALPR Tracking:** Automated license plate recognition and logging for material delivery trucks, concrete mixers, and contractor vehicles entering the active construction site to secure the logistics chain and manage site access.
 * **Fire & Smoke Hazard Detection:** Early warning detection for uncontained fires or smoke emissions across open construction zones and material storage yards.
+* **Heavy Vehicle & Truck ALPR Tracking:** Automated license plate recognition and logging for material delivery trucks, concrete mixers, and contractor vehicles entering the active construction site to secure the logistics chain and manage site access.
 * **Perimeter Intrusion Surveillance:** Monitors restricted entry points and off-limits construction areas during off-hours to prevent theft and unauthorized entry.
 
 ### 2. 🏢 Post-Delivery (Facility Management) Phase
-* **Advanced Passenger Vehicle ALPR:** Streamlined vehicle entry/exit management for tenants, visitors, and service units.
 * **Continuous Safety Surveillance:** 24/7 automated fire and smoke detection across residential and commercial indoor/outdoor zones.
+* **Advanced Passenger Vehicle ALPR:** Streamlined vehicle entry/exit management for tenants, visitors, and service units.
 * **Real-Time Security Dashboard:** Incident logging, analytics, and alerting for security operators.
 
 ---
@@ -108,6 +108,18 @@ Split counts below are taken from the Ultralytics dataset-scan logs recorded in 
 
 Detection alone isn't enough for either use case — both pipelines add tracking, temporal confirmation, and domain logic on top of raw YOLO output so that a single bad frame can't produce a wrong result.
 
+### 🔥 Fire & Smoke Detection
+
+| Stage | What it does |
+| --- | --- |
+| **Detect** | YOLO26m fire/smoke detection at 640 px, run on every 5th frame, at a confidence threshold of `0.378`, chosen from the test-set F1 curve. |
+| **ROI filter** | Optional region of interest — a detection counts only when its box center falls inside the selected region. |
+| **Confirm** | An alert fires only after enough positive checks inside a rolling window (currently **3 of 6** for Fire, **4 of 6** for Smoke), preventing single-frame false alarms. |
+| **Cooldown** | Per-class cooldown (15s) so one ongoing event doesn't spam repeated alerts. |
+| **Deliver** | Threaded capture always serves the newest frame instead of stale buffered ones, and alerts are POSTed asynchronously so network latency never blocks detection. |
+
+Details: [Fire & Smoke Deployment README](Models/SmokeAndFireModel/Deployment/README.md).
+
 ### 🚗 ALPR — Plate Recognition
 
 | Stage | What it does |
@@ -120,18 +132,6 @@ Detection alone isn't enough for either use case — both pipelines add tracking
 | **Direction** | Logs an **IN/OUT** crossing event when a tracked plate crosses a configurable virtual line, debounced over consecutive frames. |
 
 The pipeline accepts a video, a photo, or a folder of both, and processes a 1080 × 1920 video at about 18 fps on a laptop NVIDIA Quadro M2200 with the preview window open. All file locations are in `paths.py` and can be overridden with `ALPR_*` environment variables for container deployment. Details: [ALPR Deployment README](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md).
-
-### 🔥 Fire & Smoke Detection
-
-| Stage | What it does |
-| --- | --- |
-| **Detect** | YOLO26m fire/smoke detection at 640 px, run on every 5th frame, at a confidence threshold of `0.378`, chosen from the test-set F1 curve. |
-| **ROI filter** | Optional region of interest — a detection counts only when its box center falls inside the selected region. |
-| **Confirm** | An alert fires only after enough positive checks inside a rolling window (currently **3 of 6** for Fire, **4 of 6** for Smoke), preventing single-frame false alarms. |
-| **Cooldown** | Per-class cooldown (15s) so one ongoing event doesn't spam repeated alerts. |
-| **Deliver** | Threaded capture always serves the newest frame instead of stale buffered ones, and alerts are POSTed asynchronously so network latency never blocks detection. |
-
-Details: [Fire & Smoke Deployment README](Models/SmokeAndFireModel/Deployment/README.md).
 
 ---
 
@@ -203,20 +203,20 @@ Access is role-based across four roles: `super_admin`, `construction_manager`, `
 ```text
 Smart-Facilities-Monitor-System/
 ├── Models/
-│   ├── LicensePLatesDetectionModel(with_OCR)/
-│   │   ├── Deployment/                               # runnable ALPR pipeline (YOLO + ByteTrack + PaddleOCR)
-│   │   ├── Results/
-│   │   │   ├── Train/                                # base detector: results.csv, curves, confusion matrices
-│   │   │   └── Test/                                 # base detector: test-split curves and predictions
-│   │   ├── TransferLearningOnSYDataset(Yolo26n)/
-│   │   │   ├── Results/{Train,Test}/                 # fine-tuned Syrian-plate detector results
-│   │   │   └── transferlearningonsyrianplatesdataset.ipynb
-│   │   └── edited-plates-detector-v2-yolo26n.ipynb   # base detector training + test notebook
-│   └── SmokeAndFireModel/
-│       ├── Deployment/                               # runnable fire/smoke pipeline (weights included)
-│       └── Results/
-│           ├── Train/                                # results.csv, curves, training notebook
-│           └── Test/                                 # test-split curves, test notebook
+│   ├── SmokeAndFireModel/
+│   │   ├── Deployment/                               # runnable fire/smoke pipeline (weights included)
+│   │   └── Results/
+│   │       ├── Train/                                # results.csv, curves, training notebook
+│   │       └── Test/                                 # test-split curves, test notebook
+│   └── LicensePLatesDetectionModel(with_OCR)/
+│       ├── Deployment/                               # runnable ALPR pipeline (YOLO + ByteTrack + PaddleOCR)
+│       ├── Results/
+│       │   ├── Train/                                # base detector: results.csv, curves, confusion matrices
+│       │   └── Test/                                 # base detector: test-split curves and predictions
+│       ├── TransferLearningOnSYDataset(Yolo26n)/
+│       │   ├── Results/{Train,Test}/                 # fine-tuned Syrian-plate detector results
+│       │   └── transferlearningonsyrianplatesdataset.ipynb
+│       └── edited-plates-detector-v2-yolo26n.ipynb   # base detector training + test notebook
 ├── Smart-Facility-Platform-main_Front_End/           # React + TypeScript dashboard
 │   └── src/
 │       ├── features/                                 # auth, construction, operations, security, shared, super-admin
@@ -229,8 +229,8 @@ Smart-Facilities-Monitor-System/
 ```
 
 Each model's `Deployment/` folder is self-contained and has its own README:
-* 🚗 [ALPR Deployment](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md)
 * 🔥 [Fire & Smoke Deployment](Models/SmokeAndFireModel/Deployment/README.md)
+* 🚗 [ALPR Deployment](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md)
 
 > **Note:** trained `.pt` weights are committed for the Fire & Smoke model but not for the ALPR model — place the fine-tuned `best.pt` in the ALPR `Deployment/` folder (or point `ALPR_MODEL_PATH` at it) before running. See that folder's README.
 
@@ -253,7 +253,7 @@ Each model's `Deployment/` folder is self-contained and has its own README:
 
 ### Run the Dashboard (Frontend)
 
-Requires **Node.js 20.19+ or 22.12+** (needed by Vite 8). The dashboard runs standalone with built-in fixture data — no backend or database needed.
+Requires **Node.js 20.19+ or 22.12+** — the minimum for Vite 8, its React plugin, and oxlint. The dashboard runs standalone with built-in fixture data; no backend or database is needed.
 
 ```bash
 cd Smart-Facility-Platform-main_Front_End
@@ -261,23 +261,23 @@ npm install
 npm run dev
 ```
 
-Other scripts: `npm run build` (type-check and production build), `npm run lint`, `npm run typecheck`, `npm run format`.
+The browser opens automatically; if it does not, go to `http://localhost:5173`.
+
+Other scripts: `npm run build` (type-check and production build into `dist/`), `npm run preview` (serve that build), `npm run typecheck`, `npm run lint`, `npm run format`.
 
 > The frontend has its own detailed Arabic setup guide: [Smart-Facility-Platform-main_Front_End/README.md](Smart-Facility-Platform-main_Front_End/README.md)
 
 ### Run a Detection Pipeline
 
-Requires **Python 3.10+** and a CUDA-enabled GPU for real-time performance.
+**Python version.** Fire & Smoke needs Python **3.10+**. ALPR needs Python **3.10–3.13**, because PaddlePaddle has no build for newer versions.
 
-**ALPR**
+**Install CUDA-enabled PyTorch first.** Both pipelines install PyTorch through `ultralytics`, and on Windows the default PyPI package is CPU-only. For GPU inference, install a CUDA build using the selector on [pytorch.org](https://pytorch.org/get-started/locally/) before the steps below, then confirm it:
 
 ```bash
-cd "Models/LicensePLatesDetectionModel(with_OCR)/Deployment"
-pip install -r requirements.txt
-python Main.py
+python -c "import torch; print(torch.cuda.is_available())"
 ```
 
-Place the fine-tuned `best.pt` and a test video (`VID_sample.mp4`) in that folder, or set `ALPR_MODEL_PATH` and `ALPR_INPUT_PATH`; the input may be a video, a photo, or a folder.
+The ALPR pipeline was tested with the CUDA 12.6 build on an NVIDIA Quadro M2200.
 
 **Fire & Smoke**
 
@@ -287,7 +287,23 @@ pip install ultralytics opencv-python
 python Main.py
 ```
 
-The weights are included. It reads from the default camera (`VIDEO_SOURCE = 0` in `config.py`) and asks for an optional alert region on the first frame.
+* The trained weights (`best.pt`) are included.
+* It reads from the default camera (`VIDEO_SOURCE = 0` in `config.py`); set `VIDEO_SOURCE` to a video file path to run on a recording.
+* It runs on the first CUDA GPU (`DEVICE = 0`); set `DEVICE = 'cpu'` in `config.py` on a machine without one.
+* On the first frame, drag a box around the area to monitor and press **Enter**, or press **C** to monitor the whole frame.
+
+**ALPR**
+
+```bash
+cd "Models/LicensePLatesDetectionModel(with_OCR)/Deployment"
+pip install -r requirements.txt
+python Main.py
+```
+
+* **The fine-tuned detector weights are not in the repository.** Obtain `best.pt` from the project team, or reproduce it with the two training notebooks (`edited-plates-detector-v2-yolo26n.ipynb`, then `TransferLearningOnSYDataset(Yolo26n)/transferlearningonsyrianplatesdataset.ipynb`). Place it in `Deployment/`, or set `ALPR_MODEL_PATH` to its location.
+* Place a test video at `Deployment/VID_sample.mp4`, or set `ALPR_INPUT_PATH` to a video, a photo, or a folder containing both.
+* The first run needs internet access: Ultralytics downloads the COCO vehicle model (`yolo26n.pt`), and PaddleOCR downloads its recognition model.
+* Plate detection runs on the GPU when PyTorch has CUDA; OCR always runs on the CPU. For photos, the window waits for a key press before the next image.
 
 Each pipeline opens an OpenCV window; press **`q`** to stop.
 
@@ -296,11 +312,11 @@ Each pipeline opens an OpenCV window; press **`q`** to stop.
 ## 🗺️ Roadmap
 
 * [x] Train & validate Fire & Smoke Detection model (80.3% mAP@50 on the test split).
+* [x] Build Fire & Smoke inference pipeline (detection + ROI + alert confirmation).
 * [x] Train ALPR plate-detection model (96.3% mAP@50 on the test split).
 * [x] Fine-tune ALPR model on Syrian plates via transfer learning (99.5% mAP@50, 88.2% mAP@50-95 on the test split).
 * [x] Build ALPR inference pipeline (detection + tracking + OCR + vehicle type + IN/OUT crossing).
 * [x] Replace EasyOCR with PaddleOCR PP-OCRv6 (96.4% exact plate reads, no wrong reads on the 83-photo evaluation set).
-* [x] Build Fire & Smoke inference pipeline (detection + ROI + alert confirmation).
 * [x] Build React dashboard frontend (60 screens, fully Arabic/RTL).
 * [ ] Train Perimeter Intrusion detection model.
 * [ ] Build backend API to connect the detection pipelines to the dashboard.
