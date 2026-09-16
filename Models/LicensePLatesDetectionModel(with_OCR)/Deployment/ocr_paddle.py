@@ -24,7 +24,7 @@ engines. The constants below were tuned on this set, so treat it as a dev score:
     EasyOCR engine (ocr.py)          33 correct, 39 wrong, 11 unread
     this engine, PP-OCRv6_small_rec  80 correct,  0 wrong,  3 unread   ~70 ms/plate median (CPU)
 On the 53 low-resolution manual_plate_crops (median width 62 px) it reads 37
-correctly with 0 wrong, where the EasyOCR engine read 9 with 20 wrong.
+correctly with 0 wrong, where the EasyOCR engine read 9 with 18 wrong.
 """
 import math
 import os
