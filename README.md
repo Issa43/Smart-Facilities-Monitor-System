@@ -7,6 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.10.0-ee4c2c?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
 [![YOLO](https://img.shields.io/badge/Ultralytics-YOLO26-00FFFF?style=for-the-badge)](https://ultralytics.com/)
+[![PaddleOCR](https://img.shields.io/badge/PaddleOCR-PP--OCRv6-2932E1?style=for-the-badge)](https://github.com/PaddlePaddle/PaddleOCR)
 [![React](https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
@@ -19,7 +20,7 @@
 
 The **Smart Facility Monitoring System (SFMS)** is an end-to-end real-time computer vision platform engineered to bridge the operational gap between facility construction management and post-delivery facility operations.
 
-It combines custom-trained **YOLO** detection models with a full **React + TypeScript** management dashboard, providing continuous automated site surveillance, proactive hazard mitigation, and intelligent perimeter management.
+It combines custom-trained **YOLO26** detection models — for fire and smoke, and for Syrian licence plates with OCR — with a full **React + TypeScript** management dashboard, providing continuous automated site surveillance, proactive hazard mitigation, and intelligent perimeter management.
 
 > **Current state:** the detection models and the web frontend are built and working independently. The backend layer that connects them is the remaining integration work — see the Roadmap at the bottom of this page.
 
@@ -41,16 +42,49 @@ It combines custom-trained **YOLO** detection models with a full **React + TypeS
 
 ## 📊 Model Performance Metrics
 
-Metrics below are taken from the **best checkpoint** of each training run (the epoch Ultralytics saves as `best.pt`), read directly from each run's `Results/Train/results.csv`.
+### Detection
 
-| Detection Task | Architecture | Dataset | mAP@50 | mAP@50-95 | Precision | Recall | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **Fire & Smoke Detection** | YOLO26-Medium | 21,490 images | **78.8%** | 46.2% | 78.2% | 71.2% | 🟢 Deployed |
-| **ALPR — Plate Detection (base)** | YOLO26-Nano | 10,050 images | **97.2%** | 66.6% | 98.9% | 94.7% | 🔵 Base checkpoint for the fine-tune |
-| **ALPR — Syrian Plates (fine-tuned)** | YOLO26-Nano (transfer learning) | 393 images | **99.4%** | 81.2% | 99.3% | 97.6% | 🟢 Deployed |
-| **Perimeter Intrusion** | YOLO26-Nano | — | — | — | — | — | ⚪ Not in this repo yet |
+All figures come from the training and test notebooks committed with each model and describe the saved **`best.pt`** checkpoint — the one used by the deployment pipelines. *Validation* is Ultralytics' final evaluation of `best.pt` at the end of training; ***Test*** is a separate evaluation of the same checkpoint on the held-out test split, which the model never saw during training or checkpoint selection.
 
-**The fine-tuned Syrian-plates model is the one wired into the ALPR pipeline** — it was produced by taking the base plate detector as its starting checkpoint and fine-tuning it on a Syrian-plate–specific dataset, which lifted mAP@50-95 from 66.6% → 81.2%.
+| Model | Architecture | Split | Images | mAP@50 | mAP@50-95 | Precision | Recall | Status |
+| --- | --- | --- | :---: | :---: | :---: | :---: | :---: | --- |
+| **Fire & Smoke Detection** | YOLO26-Medium (21.8 M params) | Validation | 3,094 | 78.3% | 47.0% | 78.8% | 71.6% | 🟢 Deployed |
+| | | ***Test*** | 4,291 | **80.3%** | **47.0%** | **80.2%** | **74.5%** | |
+| **ALPR — Plate Detection (base)** | YOLO26-Nano (2.5 M params) | Validation | 2,000 | 96.3% | 67.1% | 98.3% | 94.9% | 🔵 Base checkpoint for the fine-tune |
+| | | ***Test*** | 998 | **96.3%** | **67.3%** | **99.2%** | **94.8%** | |
+| **ALPR — Syrian Plates (fine-tuned)** | YOLO26-Nano (transfer learning) | Validation | 41 | 99.4% | 82.5% | 98.9% | 97.6% | 🟢 Deployed |
+| | | ***Test*** | 41 | **99.5%** | **88.2%** | **99.6%** | **100%** | |
+| **Perimeter Intrusion** | YOLO26-Nano | — | — | — | — | — | — | ⚪ Not in this repo yet |
+
+**Fire & Smoke — per class (test split).** Fire is the weaker class on every metric:
+
+| Class | Images | Instances | mAP@50 | mAP@50-95 | Precision | Recall |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| Smoke | 2,066 | 2,298 | 86.1% | 54.1% | 85.3% | 80.6% |
+| Fire | 1,111 | 2,868 | 74.6% | 39.8% | 75.2% | 68.4% |
+
+**The fine-tuned Syrian-plates model is the one wired into the ALPR pipeline.** It was produced by taking the base plate detector as its starting checkpoint and fine-tuning it on the Syrian Plates dataset. The base model's scores are measured on a different, generic plate dataset, so the two rows are not a before/after comparison on the same data; what the fine-tune demonstrates is that 310 training images were enough to reach **88.2% mAP@50-95** on held-out Syrian plates.
+
+### Plate Reading (OCR)
+
+Single-frame recognition on the project's OCR evaluation set of 83 plate photographs (47 distinct plates), from detection through to the final seven-digit plate number:
+
+| OCR engine | Exact plate read | Wrong plate | No read |
+| --- | :---: | :---: | :---: |
+| EasyOCR (previous) | 39.8% | 47.0% | 13.3% |
+| **PaddleOCR PP-OCRv6 (deployed)** | **96.4%** | **0.0%** | 3.6% |
+
+The deployed engine rejects low-confidence readings instead of guessing, so its failures appear as unread plates rather than wrong numbers. Methodology, confidence intervals, results by plate size and layout, and the runtime analysis are in the [ALPR Deployment README](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md).
+
+### Training Configuration
+
+| Run | Initialised from | Epochs | Image size | Batch | Notable settings | Training time |
+| --- | --- | :---: | :---: | :---: | --- | :---: |
+| Fire & Smoke | `yolo26m.pt` (COCO) | 85 | 640 | 32 | Mosaic (closed for the last 20 epochs), mixup 0.1 | 8.7 h |
+| ALPR base | `yolo26n.pt` (COCO) | 97 of 100 (early stop, patience 20) | 1024 | 32 | Mosaic off, light colour / geometry augmentation | 3.9 h |
+| ALPR fine-tune | ALPR base `best.pt` | 42 of 50 (early stop, patience 10) | 1024 | 32 | First 10 layers frozen, MuSGD, lr0 0.001 | 4 min |
+
+All runs used Kaggle with NVIDIA Tesla T4 GPUs, Python 3.12, PyTorch 2.10.0 (CUDA 12.8), and Ultralytics 8.4.
 
 ---
 
@@ -64,9 +98,9 @@ Split counts below are taken from the Ultralytics dataset-scan logs recorded in 
 | **License Plates (base)** | Kaggle — [`adilshamim8/license-plate-recognition`](https://www.kaggle.com/datasets/adilshamim8/license-plate-recognition) | 7,052 | 2,000 | 998 | **10,050** | `plate` |
 | **Syrian Plates** | Self-collected, manually annotated in Roboflow | 310 | 42 | 41 | **393** | `Syrian_Plate` |
 
-**Smoke & Fire — background images.** Of the 21,490 images, **9,837 are background frames** containing no fire or smoke (6,457 train / 1,375 val / 2,005 test), leaving **11,653 annotated images**. These negatives are deliberate: they teach the model what *isn't* fire, reducing false alarms on things like steam, dust, and sunset glare — which matters a lot for a system that pages a human on every alert.
+**Smoke & Fire — background images.** Of the 21,490 images, **9,837 are background frames** containing no fire or smoke (6,457 train / 1,375 val / 2,005 test), leaving **11,653 annotated images**. These negatives are deliberate: they teach the model what *isn't* fire, reducing false alarms on things like steam, dust, and sunset glare — which matters a lot for a system that pages a human on every alert. Ultralytics flagged 41 images as corrupt (21 train / 5 val / 15 test) and skipped them.
 
-**Syrian Plates — why so small works.** At 393 images this set is ~25× smaller than the base plate dataset, far too little to train a detector from scratch. Used as a **fine-tuning** set on top of the base detector, it still pushed mAP@50-95 from 66.6% → **81.2%**, because the base model already knew "what a plate looks like" and only needed to adapt to Syrian plate appearance. Images were gathered manually and annotated in Roboflow, with a ~79/11/10 train/val/test split.
+**Syrian Plates — why so small works.** At 393 images this set is ~25× smaller than the base plate dataset, far too little to train a detector from scratch. Used as a **fine-tuning** set on top of the base detector, it is enough, because the base model already knew "what a plate looks like" and only needed to adapt to Syrian plate appearance. Images were gathered manually and annotated in Roboflow, with a ~79/11/10 train/val/test split; one validation image was flagged as corrupt, leaving 41 for evaluation.
 
 ---
 
@@ -78,40 +112,43 @@ Detection alone isn't enough for either use case — both pipelines add tracking
 
 | Stage | What it does |
 | --- | --- |
-| **Detect & track** | YOLO26n plate detection with ByteTrack, giving each plate a persistent ID across frames. |
+| **Detect & track** | YOLO26n plate detection at 1024 px with ByteTrack, giving each plate a persistent track across frames. |
 | **Read** | PaddleOCR (PP-OCRv6 text-line recognizer). One-row plates are read as a single line; two-row plates are split and each row is read separately, with a deskewed copy tried for tilted plates. Reads below 0.85 confidence are rejected, because a missing read is safer than a wrong one. |
 | **Parse** | Handles both Syrian plate formats — permanent (`15-14193`, 2 + 5 digits) and temporary/customs (`541-5134`, 3 + 4 digits) — decided from the digits that were read (the emblem split on one-row plates, the bottom-row length on two-row plates) rather than from the box's aspect ratio. |
 | **Confirm** | Confidence-weighted voting over each track's reading history: a plate is confirmed after 3 agreeing reads and locked after 5. Vehicles are numbered by their confirmed plate, so a car the tracker splits into several tracks keeps a single ID. |
 | **Classify vehicle** | Each plate is matched to the smallest enclosing vehicle box from a COCO YOLO model, then smoothed by majority vote into `CAR` / `Truck`. |
 | **Direction** | Logs an **IN/OUT** crossing event when a tracked plate crosses a configurable virtual line, debounced over consecutive frames. |
 
-On the project's OCR evaluation set of 83 plate photos (47 distinct plates), the pipeline reads **96.4%** of plates exactly and makes **no incorrect reads**. Methodology, per-condition results, and runtime analysis are in the [ALPR Deployment README](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md).
+The pipeline accepts a video, a photo, or a folder of both, and processes a 1080 × 1920 video at about 18 fps on a laptop NVIDIA Quadro M2200 with the preview window open. All file locations are in `paths.py` and can be overridden with `ALPR_*` environment variables for container deployment. Details: [ALPR Deployment README](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md).
 
 ### 🔥 Fire & Smoke Detection
 
 | Stage | What it does |
 | --- | --- |
-| **Detect** | YOLO fire/smoke detection at a confidence threshold of `0.378`, chosen from the test-set F1 curve. |
+| **Detect** | YOLO26m fire/smoke detection at 640 px, run on every 5th frame, at a confidence threshold of `0.378`, chosen from the test-set F1 curve. |
 | **ROI filter** | Optional region of interest — a detection counts only when its box center falls inside the selected region. |
 | **Confirm** | An alert fires only after enough positive checks inside a rolling window (currently **3 of 6** for Fire, **4 of 6** for Smoke), preventing single-frame false alarms. |
 | **Cooldown** | Per-class cooldown (15s) so one ongoing event doesn't spam repeated alerts. |
 | **Deliver** | Threaded capture always serves the newest frame instead of stale buffered ones, and alerts are POSTed asynchronously so network latency never blocks detection. |
 
+Details: [Fire & Smoke Deployment README](Models/SmokeAndFireModel/Deployment/README.md).
+
 ---
 
 ## 🖥️ Management Dashboard
 
-A full React + TypeScript application — **57 screens**, fully Arabic (RTL), running standalone on built-in fixture data with no backend required.
+A full React + TypeScript application — **60 routed screens**, fully Arabic (RTL), running standalone on built-in fixture data kept in the browser, with no backend or database required.
 
 | Area | Screens | Covers |
 | --- | :---: | --- |
-| **Construction** | 13 | Projects, stages, timeline, progress, materials & requests, daily reports, quality inspections, site photos, documents |
-| **Operations** | 12 | Facilities, assets & asset health, work orders, fault tracking, maintenance calendar, performance, operational reports |
-| **Security** | 12 | Alerts & alert history, incidents & analytics, camera monitoring, emergency monitoring, response center, safety documentation |
-| **Super Admin** | 10 | Users, roles matrix, projects, analytics, audit logs, system settings, reports |
-| **Auth / Shared** | 10 | Login, password reset, profile, notifications, reports, help |
+| **Super Admin** | 13 | Executive dashboard, projects (list, detail, create, edit), users and user detail, roles & permissions, reports, analytics, notifications, audit log, system settings |
+| **Construction** | 14 | Dashboard, projects and project detail, stages and stage detail, progress, timeline, materials, material requests (list and new request), quality inspections, daily reports, documents, site photos |
+| **Operations** | 14 | Dashboard, facilities and facility detail, assets and asset detail, asset health, work orders (all, preventive, corrective) and work-order detail, maintenance calendar, fault tracking, facility performance, operational reports |
+| **Security** | 12 | Dashboard, alerts and alert detail, alert history, incidents and incident detail, response center, emergency monitoring, camera monitoring, incident analytics, security reports, safety documentation |
+| **Auth** | 4 | Login, forgot password, reset password, reset confirmation |
+| **Shared** | 3 | Profile, help, not found |
 
-Access is role-based across four roles: `super_admin`, `construction_manager`, `operations_manager`, and `security_officer`.
+Access is role-based across four roles: `super_admin`, `construction_manager`, `operations_manager`, and `security_officer`. Navigation, breadcrumbs, and routes are generated from a single route configuration per role (`src/routes/routeConfig.ts`).
 
 ### 🖼️ Preview
 
@@ -143,8 +180,8 @@ Access is role-based across four roles: `super_admin`, `construction_manager`, `
                                          │
                                          ▼
                      [ YOLO Multi-Task Detection Engine ]
-                        ├── Fire & Smoke Detector          (built)
-                        ├── License Plate Reader + OCR     (built)
+                        ├── Fire & Smoke Detector          (built)   YOLO26m + ROI + temporal alerts
+                        ├── License Plate Reader + OCR     (built)   YOLO26n + ByteTrack + PaddleOCR
                         └── Perimeter Intrusion Detector   (planned)
                                          │
                                          ▼
@@ -167,14 +204,26 @@ Access is role-based across four roles: `super_admin`, `construction_manager`, `
 Smart-Facilities-Monitor-System/
 ├── Models/
 │   ├── LicensePLatesDetectionModel(with_OCR)/
-│   │   ├── Deployment/                          # runnable ALPR pipeline
-│   │   ├── Results/                             # base model training/test results
-│   │   └── TransferLearningOnSYDataset(Yolo26n)/  # fine-tuning run + notebook
+│   │   ├── Deployment/                               # runnable ALPR pipeline (YOLO + ByteTrack + PaddleOCR)
+│   │   ├── Results/
+│   │   │   ├── Train/                                # base detector: results.csv, curves, confusion matrices
+│   │   │   └── Test/                                 # base detector: test-split curves and predictions
+│   │   ├── TransferLearningOnSYDataset(Yolo26n)/
+│   │   │   ├── Results/{Train,Test}/                 # fine-tuned Syrian-plate detector results
+│   │   │   └── transferlearningonsyrianplatesdataset.ipynb
+│   │   └── edited-plates-detector-v2-yolo26n.ipynb   # base detector training + test notebook
 │   └── SmokeAndFireModel/
-│       ├── Deployment/                          # runnable fire/smoke pipeline
-│       └── Results/                             # training/test results
-├── Smart-Facility-Platform-main_Front_End/      # React + TypeScript dashboard
-├── screenshots/                                 # dashboard screenshots
+│       ├── Deployment/                               # runnable fire/smoke pipeline (weights included)
+│       └── Results/
+│           ├── Train/                                # results.csv, curves, training notebook
+│           └── Test/                                 # test-split curves, test notebook
+├── Smart-Facility-Platform-main_Front_End/           # React + TypeScript dashboard
+│   └── src/
+│       ├── features/                                 # auth, construction, operations, security, shared, super-admin
+│       ├── api/                                      # fixture-backed data layer
+│       └── routes/                                   # per-role route and navigation config
+├── screenshots/                                      # dashboard screenshots used above
+├── LICENSE
 ├── .gitignore
 └── README.md
 ```
@@ -183,7 +232,7 @@ Each model's `Deployment/` folder is self-contained and has its own README:
 * 🚗 [ALPR Deployment](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md)
 * 🔥 [Fire & Smoke Deployment](Models/SmokeAndFireModel/Deployment/README.md)
 
-> **Note:** trained `.pt` weights are not committed for the ALPR model — place your own `best.pt` in its `Deployment/` folder before running. See that folder's README.
+> **Note:** trained `.pt` weights are committed for the Fire & Smoke model but not for the ALPR model — place the fine-tuned `best.pt` in the ALPR `Deployment/` folder (or point `ALPR_MODEL_PATH` at it) before running. See that folder's README.
 
 ---
 
@@ -191,11 +240,11 @@ Each model's `Deployment/` folder is self-contained and has its own README:
 
 | Layer | Technologies |
 | --- | --- |
-| **Deep Learning / CV** | PyTorch, Ultralytics YOLO26, OpenCV, PaddleOCR (PP-OCRv6), ByteTrack |
-| **Frontend** | React 19, TypeScript, Vite, React Router 7, TanStack Query, Recharts, React Hook Form + Zod |
-| **Tooling** | oxlint, Prettier |
-| **Training Infrastructure** | Kaggle GPU clusters (CUDA 12.8), Python 3.12, PyTorch 2.10.0 |
-| **Local Inference** | Python 3.13, CUDA-enabled PyTorch |
+| **Deep Learning / CV** | PyTorch, Ultralytics YOLO26, ByteTrack, PaddleOCR (PP-OCRv6), OpenCV |
+| **Frontend** | React 19, TypeScript 6, Vite 8, React Router 7, TanStack Query 5, Recharts 3, React Hook Form 7 + Zod 4, Lucide icons, Cairo and IBM Plex Sans Arabic fonts |
+| **Tooling** | oxlint, Prettier, TypeScript type checking |
+| **Training Infrastructure** | Kaggle, NVIDIA Tesla T4 GPUs, Python 3.12, PyTorch 2.10.0 (CUDA 12.8), Ultralytics 8.4 |
+| **Local Inference** | Python 3.13, CUDA-enabled PyTorch; tested on an NVIDIA Quadro M2200 laptop GPU |
 | **Backend** | *Not built yet — planned* |
 
 ---
@@ -204,7 +253,7 @@ Each model's `Deployment/` folder is self-contained and has its own README:
 
 ### Run the Dashboard (Frontend)
 
-Requires **Node.js**. The dashboard runs standalone with built-in fixture data — no backend or database needed.
+Requires **Node.js 20.19+ or 22.12+** (needed by Vite 8). The dashboard runs standalone with built-in fixture data — no backend or database needed.
 
 ```bash
 cd Smart-Facility-Platform-main_Front_End
@@ -212,11 +261,15 @@ npm install
 npm run dev
 ```
 
+Other scripts: `npm run build` (type-check and production build), `npm run lint`, `npm run typecheck`, `npm run format`.
+
 > The frontend has its own detailed Arabic setup guide: [Smart-Facility-Platform-main_Front_End/README.md](Smart-Facility-Platform-main_Front_End/README.md)
 
 ### Run a Detection Pipeline
 
 Requires **Python 3.10+** and a CUDA-enabled GPU for real-time performance.
+
+**ALPR**
 
 ```bash
 cd "Models/LicensePLatesDetectionModel(with_OCR)/Deployment"
@@ -224,16 +277,29 @@ pip install -r requirements.txt
 python Main.py
 ```
 
-The same pattern applies to `Models/SmokeAndFireModel/Deployment`. Each pipeline opens an OpenCV window and runs against a local video/camera source — configured in `paths.py` for ALPR (overridable through `ALPR_*` environment variables) and in `config.py` for fire/smoke. Press **`q`** to stop.
+Place the fine-tuned `best.pt` and a test video (`VID_sample.mp4`) in that folder, or set `ALPR_MODEL_PATH` and `ALPR_INPUT_PATH`; the input may be a video, a photo, or a folder.
+
+**Fire & Smoke**
+
+```bash
+cd Models/SmokeAndFireModel/Deployment
+pip install ultralytics opencv-python
+python Main.py
+```
+
+The weights are included. It reads from the default camera (`VIDEO_SOURCE = 0` in `config.py`) and asks for an optional alert region on the first frame.
+
+Each pipeline opens an OpenCV window; press **`q`** to stop.
 
 ---
 
 ## 🗺️ Roadmap
 
-* [x] Train & validate Fire & Smoke Detection model (78.8% mAP@50).
-* [x] Train ALPR plate-detection model (97.2% mAP@50).
-* [x] Fine-tune ALPR model on Syrian plates via transfer learning (99.4% mAP@50).
+* [x] Train & validate Fire & Smoke Detection model (80.3% mAP@50 on the test split).
+* [x] Train ALPR plate-detection model (96.3% mAP@50 on the test split).
+* [x] Fine-tune ALPR model on Syrian plates via transfer learning (99.5% mAP@50, 88.2% mAP@50-95 on the test split).
 * [x] Build ALPR inference pipeline (detection + tracking + OCR + vehicle type + IN/OUT crossing).
+* [x] Replace EasyOCR with PaddleOCR PP-OCRv6 (96.4% exact plate reads, no wrong reads on the 83-photo evaluation set).
 * [x] Build Fire & Smoke inference pipeline (detection + ROI + alert confirmation).
 * [x] Build React dashboard frontend (60 screens, fully Arabic/RTL).
 * [ ] Train Perimeter Intrusion detection model.
@@ -241,6 +307,12 @@ The same pattern applies to `Models/SmokeAndFireModel/Deployment`. Each pipeline
 * [ ] Implement WebSocket connection for real-time web notifications.
 * [ ] Replace interactive OpenCV windows with headless production entry points.
 * [ ] Deploy Docker containerization for production environments.
+
+---
+
+## 👥 Team
+
+Developed as a graduation project by **Issa Hasan**, **Diana Al-Yousef**, and **Marina Kousa**.
 
 ---
 
