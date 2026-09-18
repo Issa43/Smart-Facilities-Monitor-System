@@ -65,18 +65,18 @@ not repeated here.
 - **Documentation updates**: same set as prior phases.
 
 ### Phase 6 — AI Engine
-- **Objectives**: `ai_engine` app — YOLO/OpenCV pipeline, wired to the Phase 5 Security models.
-- **Tasks**: resolve the open questions in `ai-engine.md` §Future Evolution (thresholds, dedup window, frame rate) with real values before shipping; `CameraDetectionEvent`, `AIModel`, `VehicleRecognition`, `CameraRecording`; Celery tasks per `celery-tasks.md`.
-- **Dependencies**: Phase 5, Redis/Celery infrastructure (present since Phase 1, activated here).
-- **Completion criteria**: Workflow 4 passes end-to-end with a real (or simulated RTSP) camera feed producing Detection Events → Alerts.
-- **Documentation updates**: `ai-engine.md`, `camera-processing.md`, `celery-tasks.md` (flip to implemented).
+- **Objectives**: external-AI integration contracts only; Django does not run AI inference.
+- **Tasks**: roleless AIKey authentication, camera scopes, final CameraEvent ingestion, and current camera/ROI/schedule/line/vehicle/model configuration APIs.
+- **Dependencies**: Phase 5 Security models.
+- **Completion criteria**: authenticated external services can read scoped configuration and persist idempotent final events that conditionally create SecurityAlerts.
+- **Documentation updates**: `ai-engine.md`, `camera-processing.md`, and `authentication.md`.
 
 ### Phase 7 — Real-Time Layer
-- **Objectives**: `notifications` app, Django Channels, WebSocket delivery.
-- **Tasks**: `channels`/`channels_redis` added to `INSTALLED_APPS`, `CHANNEL_LAYERS` setting, `JWTAuthMiddleware` (see `authentication.md`), consumers/routing, resolve the per-recipient read-state design question in `notifications.md` §Future Evolution (write it up as an ADR once decided).
-- **Dependencies**: Phases 5/6 (things worth notifying about must exist).
-- **Completion criteria**: a WebSocket client authenticated via JWT receives a real-time push when a Security Alert is created.
-- **Documentation updates**: `notifications.md`, `authentication.md`, new ADR for the read-state decision.
+- **Objectives**: Django Channels delivery of committed final security events.
+- **Tasks**: `/ws/security/events/`, JWT subprotocol authentication, server-owned recipient scoping, stable payloads, and transaction-safe broadcasts.
+- **Dependencies**: persisted CameraEvent/SecurityAlert contracts and the existing Redis channel layer.
+- **Completion criteria**: authorized human clients receive scoped live events after commit; AIKey, invalid roles, and cross-facility access are rejected.
+- **Documentation updates**: `notifications.md`, `authentication.md`, and ADR-0010.
 
 ### Phase 8 — Reporting
 - **Objectives**: `reports` app, PDF/Excel generation.

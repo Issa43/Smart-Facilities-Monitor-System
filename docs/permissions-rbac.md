@@ -50,6 +50,7 @@ Fixed at exactly four — adding a fifth is a breaking architectural change
 | Assets/Maintenance/Faults | Full | none | assigned only | read only |
 | Cameras/Alerts/Incidents | Full | none | read only | assigned only |
 | Reports | Full | Construction for assigned Projects | Assets/Maintenance for assigned Facilities | Security for assigned Facilities |
+| External Safety Alerts | Full | assigned Projects (`safety.view`; actions need `safety.manage`) | Projects of assigned active Facilities (`safety.view`; actions need `safety.manage`) | none |
 | Audit Logs | read only | none | none | none |
 
 ### Assignment tables (the object-level mechanism)

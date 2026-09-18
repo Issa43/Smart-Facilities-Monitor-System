@@ -29,13 +29,13 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Roles are fixed by the approved architecture (the 4 SFLMS roles) and are
     seeded via migration/data command, not created ad-hoc through the API -
-    hence read-only here. Every authenticated user may list roles (e.g. to
-    populate a dropdown), but nothing else.
+    hence read-only here. The catalogue and permission matrix are restricted
+    to Super Admin with the rest of Users/Roles management.
     """
 
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsSuperAdmin]
     filterset_fields = ["name"]
     search_fields = ["name", "description"]
 
@@ -48,6 +48,14 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     @transaction.atomic
     def set_permissions(self, request, pk=None):
         role = self.get_object()
+        if role.name == Role.SUPER_ADMIN:
+            raise ValidationError(
+                {
+                    "permissions": [
+                        "Super Admin is a protected break-glass role and always has full access."
+                    ]
+                }
+            )
         payload = RolePermissionUpdateSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         before = list(
@@ -92,6 +100,16 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = User.objects.select_related("role")
+        # Machine principals (AI ingestion service accounts) are created with
+        # no role, cannot authenticate with a password, and are denied by every
+        # RBAC check. Listing them broke each client that requires a role and
+        # offered non-human accounts in assignee pickers, so they are omitted
+        # from the listing — keeping `count` and pagination consistent with the
+        # rows actually returned. Detail routes are deliberately unchanged, so
+        # the existing rule that rejects giving a principal a human role still
+        # applies exactly as before.
+        if getattr(self, "action", None) == "list":
+            queryset = queryset.exclude(role__isnull=True)
         user = self.request.user
         if not user.is_authenticated or not user.role_id:
             return queryset.none()
@@ -138,6 +156,24 @@ class UserViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        if instance.pk == request.user.pk:
+            errors = {}
+            if (
+                "role" in request.data
+                and str(request.data["role"]) != str(instance.role_id)
+            ):
+                errors["role"] = [
+                    "You cannot change your own Super Admin role."
+                ]
+            if (
+                "status" in request.data
+                and request.data["status"] != User.STATUS_ACTIVE
+            ):
+                errors["status"] = [
+                    "You cannot suspend or deactivate your own Super Admin account."
+                ]
+            if errors:
+                raise ValidationError(errors)
         write_serializer = self.get_serializer(
             instance,
             data=request.data,
@@ -152,6 +188,18 @@ class UserViewSet(viewsets.ModelViewSet):
                 context=self.get_serializer_context(),
             ).data
         )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.pk == request.user.pk:
+            raise ValidationError(
+                {
+                    "user": [
+                        "You cannot archive your own Super Admin account."
+                    ]
+                }
+            )
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=["get", "patch"], permission_classes=[IsAuthenticated])
     def me(self, request):

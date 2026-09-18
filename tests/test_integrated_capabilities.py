@@ -190,6 +190,13 @@ def test_site_photo_upload_and_download_are_project_scoped(
         role_type=ProjectAssignment.RoleType.PRIMARY_MANAGER,
         created_by=super_admin_user,
     )
+    officer = User.objects.create_user(
+        email="unassigned-security@sflms.test",
+        username="unassigned-security",
+        full_name="Unassigned Security",
+        password="StrongPass123!",
+        role=role_security_officer,
+    )
     api_client.force_authenticate(construction_manager_user)
     image_bytes = io.BytesIO()
     Image.new("RGB", (1, 1), color="white").save(image_bytes, format="PNG")
@@ -216,13 +223,6 @@ def test_site_photo_upload_and_download_are_project_scoped(
     assert b"".join(download.streaming_content).startswith(b"\x89PNG")
     download.close()
 
-    officer = User.objects.create_user(
-        email="unassigned-security@sflms.test",
-        username="unassigned-security",
-        full_name="Unassigned Security",
-        password="StrongPass123!",
-        role=role_security_officer,
-    )
     api_client.force_authenticate(officer)
     assert api_client.get(
         reverse("api_v1:construction-site-photo-download", kwargs={"pk": photo.pk})

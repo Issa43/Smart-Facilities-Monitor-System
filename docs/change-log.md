@@ -1,5 +1,35 @@
 # Change Log
 
+## 2026-08-25 — Full-system rehearsal and gap closure
+
+- Added visible real-Chrome rehearsals for all four roles, including project
+  assignment persistence, material stock/request/self-approval protection,
+  notifications, async PDF download, asset/work-order closure, and incident
+  notes/actions/evidence/closure.
+- Corrected incident response actions to start pending, fixed UUID-backed
+  IncidentNote creation, and preserved long nested API paths in mutation audit
+  entries without exceeding the indexed `entity_id` limit.
+- Removed Construction Manager report cards that the frozen backend report
+  matrix does not authorize; RBAC was preserved rather than broadened.
+- Verified 147 backend tests, 65 frontend tests, 11 Playwright workflows,
+  Django/migration/static/build gates, healthy Docker/Celery services, and an
+  encrypted isolated backup/restore drill. Full npm audit reports zero
+  vulnerabilities.
+- Kept AI/CV model implementation explicitly deferred.
+
+## 2026-08-25 — Final completion Batches 4–20
+
+- Completed and verified four-role workflows, lifecycle enforcement, protected
+  files, reports/retry, notifications, analytics, UX recovery/accessibility,
+  and measured N+1/request-waterfall corrections.
+- Added 144-test backend and 64-test frontend gates plus seven isolated
+  Playwright E2E workflows.
+- Added production frontend/Nginx image and Compose overlay, encrypted
+  backup/restore with a successful isolated restore drill, JSON logs, metrics,
+  and operational health thresholds.
+- Resolved the npm nanoid advisory; npm audit reports zero vulnerabilities.
+- Kept all AI/CV model implementation explicitly deferred.
+
 ## Purpose
 A chronological record of what actually changed in the repository and
 when — the ground truth of project history, complementary to

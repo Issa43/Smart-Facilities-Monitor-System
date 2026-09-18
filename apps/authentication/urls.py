@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    DevPasswordResetLinkView,
     LoginView,
     LogoutView,
     PasswordResetConfirmView,
@@ -17,5 +18,13 @@ urlpatterns = [
         "password-reset/confirm/",
         PasswordResetConfirmView.as_view(),
         name="auth-password-reset-confirm",
+    ),
+    # Local-development shortcut. The route is always present so its refusal is
+    # exercised by the test suite, but the view answers 404 unless DEBUG is on,
+    # which production settings never allow.
+    path(
+        "dev/password-reset-link/",
+        DevPasswordResetLinkView.as_view(),
+        name="auth-dev-password-reset-link",
     ),
 ]

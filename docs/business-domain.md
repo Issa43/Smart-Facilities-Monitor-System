@@ -49,6 +49,11 @@ Reporting & Notifications: cross-cutting, consume events from all four.
   the AI material-prediction feature depends on.
 - A `MaterialRequest` must be `Approved` before it can be `Completed`;
   `Rejected` is terminal.
+- Construction Managers create Material Requests within assigned Projects.
+  Only Super Admin reviews, approves, or rejects them; Operations Managers and
+  Security Officers have no decision authority in this construction workflow.
+  Approval may atomically advance `Submitted -> Reviewed -> Approved` while the
+  explicit `Reviewed` state remains available.
 
 ### Construction → Facility Conversion
 - Conversion is a **deliberate, manual action** (`convert_project_to_facility`

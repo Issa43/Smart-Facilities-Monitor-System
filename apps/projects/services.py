@@ -53,6 +53,16 @@ def _as_progress(value):
 
 
 def calculate_project_progress(project):
+    prefetched_phases = getattr(project, "_prefetched_objects_cache", {}).get(
+        "phases"
+    )
+    if prefetched_phases is not None:
+        values = [phase.current_progress for phase in prefetched_phases]
+        if not values:
+            return Decimal("0.00")
+        average = sum(values, Decimal("0.00")) / len(values)
+        return average.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
     average = ProjectPhase.objects.filter(project=project).aggregate(
         value=Avg("current_progress")
     )["value"]

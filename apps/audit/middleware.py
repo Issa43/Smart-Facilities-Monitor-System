@@ -49,7 +49,7 @@ class ApiMutationAuditMiddleware:
                         actor=actor,
                         action=f"api.{method.lower()}",
                         entity_type="api_endpoint",
-                        entity_id=path,
+                        entity_id=path[:100],
                         entity_ref=path,
                         after={"status_code": status_code},
                         ip_address=ip_address or None,

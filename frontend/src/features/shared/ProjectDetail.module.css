@@ -1,0 +1,78 @@
+/* ==========================================================================
+   Detail-page hero and media grid. Shared by project, facility and asset
+   detail pages so the drill-down layout is identical everywhere.
+   ========================================================================== */
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.heroBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.heroTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 700px) {
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-5);
+  }
+}
+
+/* ---------- Photo grid ---------- */
+.photoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--space-4);
+}
+
+.photo {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--duration-base),
+    box-shadow var(--duration-base);
+}
+.photo:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+.photoMedia {
+  height: 150px;
+}
+
+.photoCaption {
+  padding: 12px 14px;
+  font-size: 12.5px;
+  font-weight: var(--fw-semibold);
+  line-height: 1.6;
+}
+
+.photoDate {
+  display: block;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: var(--fw-regular);
+  margin-top: 4px;
+}

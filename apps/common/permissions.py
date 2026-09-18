@@ -27,7 +27,13 @@ class IsSuperAdmin(BasePermission):
 
     def has_permission(self, request, view):
         user = request.user
-        return bool(user and user.is_authenticated and user.role_id and user.role.name == Role.SUPER_ADMIN)
+        return bool(
+            user
+            and user.is_authenticated
+            and user.is_active
+            and user.role_id
+            and user.role.name == Role.SUPER_ADMIN
+        )
 
 
 class HasRole(BasePermission):

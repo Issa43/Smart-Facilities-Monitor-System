@@ -1,0 +1,114 @@
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: var(--fw-bold);
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.required {
+  color: var(--critical-dark);
+  margin-inline-start: 3px;
+}
+
+.control,
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  background: var(--surface-alt);
+  color: var(--text);
+  outline: none;
+  transition:
+    border-color var(--duration-base),
+    background var(--duration-base),
+    box-shadow var(--duration-base);
+}
+
+.field textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.field select {
+  cursor: pointer;
+  /* Native arrow sits on the correct side automatically under dir="rtl". */
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234A5A6E' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 14px center;
+  background-size: 14px;
+  padding-inline-start: 38px;
+}
+
+.field input:hover,
+.field select:hover,
+.field textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--primary-dark);
+  background: var(--surface);
+  box-shadow: var(--shadow-focus);
+}
+
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: var(--fs-micro);
+  color: var(--text-faint);
+  margin-top: 5px;
+}
+
+.error {
+  font-size: var(--fs-micro);
+  color: var(--critical-dark);
+  font-weight: var(--fw-semibold);
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hasError input,
+.hasError select,
+.hasError textarea {
+  border-color: var(--critical);
+  background: var(--critical-tint);
+}
+
+/* Side-by-side fields inside a form. */
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+.row3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+@media (max-width: 700px) {
+  .row,
+  .row3 {
+    grid-template-columns: 1fr;
+  }
+}

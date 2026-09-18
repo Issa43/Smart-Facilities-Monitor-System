@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, OuterRef, Subquery
 from django.db.models.functions import TruncMonth
@@ -17,6 +17,7 @@ from apps.construction.models import QualityInspection
 from apps.maintenance.models import Fault, MaintenanceOrder
 from apps.materials.models import Material, MaterialRequest
 from apps.projects.models import PhaseProgressLog, Project, ProjectPhase
+from apps.projects.services import calculate_project_progress
 from apps.security.models import Incident, IncidentAction, SecurityAlert
 from apps.users.models import User
 
@@ -51,6 +52,12 @@ def _monthly(queryset, date_field, *, value_field=None):
     ]
 
 
+def _calendar_months_ago_start(months):
+    today = timezone.localdate()
+    month_index = today.year * 12 + today.month - 1 - months
+    return date(month_index // 12, month_index % 12 + 1, 1)
+
+
 def _projects_for(user):
     queryset = Project.objects.all()
     if not user.is_superuser and user.role.name != "super_admin":
@@ -75,11 +82,21 @@ class AdminAnalyticsView(AnalyticsView):
         incidents = Incident.objects.all()
         alerts = SecurityAlert.objects.all()
         active_order_statuses = [MaintenanceOrder.Status.OPEN, MaintenanceOrder.Status.ASSIGNED, MaintenanceOrder.Status.IN_PROGRESS]
-        phase_average = ProjectPhase.objects.aggregate(value=Avg("current_progress"))["value"] or 0
+        project_rows = list(projects.prefetch_related("phases"))
+        project_progress = [calculate_project_progress(project) for project in project_rows]
+        overall_progress = (
+            sum(project_progress) / len(project_progress) if project_progress else 0
+        )
+        active_project_statuses = [Project.Status.PLANNING, Project.Status.IN_PROGRESS]
+        progress_since = _calendar_months_ago_start(5)
         return {
             "total_projects": projects.count(),
-            "active_projects": projects.filter(status__in=[Project.Status.PLANNING, Project.Status.IN_PROGRESS]).count(),
-            "overall_progress": round(float(phase_average), 2),
+            "active_projects": projects.filter(status__in=active_project_statuses).count(),
+            "delayed_projects": projects.filter(
+                status__in=active_project_statuses,
+                expected_completion_date__lt=timezone.localdate(),
+            ).count(),
+            "overall_progress": round(float(overall_progress), 2),
             "operational_facilities": facilities.filter(status="operational").count(),
             "total_assets": assets.count(),
             "asset_health": round(float(assets.aggregate(value=Avg("health_score"))["value"] or 0), 2),
@@ -89,7 +106,11 @@ class AdminAnalyticsView(AnalyticsView):
             "critical_alerts": alerts.filter(status=SecurityAlert.Status.NEW, severity_level=SecurityAlert.Severity.CRITICAL).count(),
             "active_users": User.objects.filter(status=User.STATUS_ACTIVE).count(),
             "total_users": User.objects.count(),
-            "progress_trend": _monthly(PhaseProgressLog.objects.all(), "created_at", value_field="progress_percentage"),
+            "progress_trend": _monthly(
+                PhaseProgressLog.objects.filter(created_at__date__gte=progress_since),
+                "created_at",
+                value_field="progress_percentage",
+            ),
             "projects_by_status": _distribution(projects, "status"),
             "assets_by_status": _distribution(assets, "current_status"),
         }

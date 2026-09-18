@@ -242,6 +242,16 @@ class Project(BaseModel):
                 "Actual completion date cannot precede the start date."
             )
 
+        if self.pk and self.start_date:
+            phases_before_project_start = self.phases.filter(
+                Q(start_date__lt=self.start_date)
+                | Q(actual_start_date__lt=self.start_date)
+            ).exists()
+            if phases_before_project_start:
+                errors["start_date"] = (
+                    "Project start date cannot be later than an existing phase start date."
+                )
+
         if (
             self.status in {self.Status.COMPLETED, self.Status.OPERATIONAL}
             and not self.actual_completion_date
@@ -461,6 +471,22 @@ class ProjectPhase(BaseModel):
 
         if self.project_id and not self.project.is_active:
             errors["project"] = "Phases require an active project."
+        if (
+            self.project_id
+            and self.start_date
+            and self.start_date < self.project.start_date
+        ):
+            errors["start_date"] = (
+                "Phase start date cannot precede the project start date."
+            )
+        if (
+            self.project_id
+            and self.actual_start_date
+            and self.actual_start_date < self.project.start_date
+        ):
+            errors["actual_start_date"] = (
+                "Phase actual start date cannot precede the project start date."
+            )
         if self.sequence_number is not None and self.sequence_number <= 0:
             errors["sequence_number"] = "Sequence number must be greater than zero."
         if (

@@ -26,6 +26,10 @@ def generate_maintenance_reference():
     return f"WO-{uuid.uuid4().hex[:12].upper()}"
 
 
+def generate_fault_reference():
+    return f"FLT-{uuid.uuid4().hex[:12].upper()}"
+
+
 class MaintenanceOrder(BaseModel):
     class Type(models.TextChoices):
         PREVENTIVE = "preventive", "Preventive"
@@ -184,6 +188,12 @@ class Fault(BaseModel):
         RESOLVED = "resolved", "Resolved"
         CLOSED = "closed", "Closed"
 
+    reference = models.CharField(
+        max_length=20,
+        unique=True,
+        default=generate_fault_reference,
+        editable=False,
+    )
     asset = models.ForeignKey(
         "assets.Asset",
         on_delete=models.PROTECT,
@@ -268,4 +278,4 @@ class Fault(BaseModel):
             raise ValidationError(errors)
 
     def __str__(self):
-        return f"{self.asset} - {self.fault_type}"
+        return self.reference

@@ -11,8 +11,8 @@
 | 2 | Assignment Tables | `ProjectAssignment`, `FacilityAssignment` بدل FK مباشر، بحقل `role_type` يسمح بأكتر من مستخدم |
 | 3 | RBAC + Object-Level | كل `views.py` هيستخدم `get_queryset()` مفلترة عبر Assignment tables — تفاصيل §6 |
 | 4 | Maintenance Order + Execution | `MaintenanceOrder` (workflow) + `WorkExecutionLog` (تنفيذ متعدد) بدل سجل واحد |
-| 5 | AI غير Blocking | Django + Celery + Redis، اتفصيل الـ pipeline كامل في §7 |
-| 6 | Real-Time | Django Channels + WebSockets + Redis + جدول Notification |
+| 5 | AI خارجي | خدمة AI خارج Django تقرأ الإعدادات وترسل الأحداث النهائية فقط عبر REST؛ التفاصيل الحالية في §7 |
+| 6 | Real-Time | Django Channels + WebSockets + Redis للأحداث الأمنية المحفوظة، بمسار مستقل عن Notification/FCM |
 | 7 | Storage | MEDIA_ROOT + abstraction layer قابلة للتبديل لـ Cloud لاحقًا |
 | 8 | Database | PostgreSQL + Django ORM |
 | 9 | Apps Structure | حسب القائمة المطلوبة بالضبط + إضافة واحدة موضحة في §2 |
@@ -74,10 +74,9 @@ sflms/
 │   ├── assets/                  # Asset, AssetHistory
 │   ├── maintenance/              # MaintenanceOrder, WorkExecutionLog, MaintenanceChecklist,
 │   │                             # MaintenanceCalendarEvent, Fault, FaultTimeline
-│   ├── security/                # Camera, SecurityAlert, Incident, IncidentAction
-│   ├── ai_engine/               # AIModel, CameraDetectionEvent, VehicleRecognition,
-│   │                             # Celery tasks, YOLO/OpenCV service layer
-│   ├── notifications/            # Notification, Channels consumers, routing
+│   ├── security/                # Camera/Event/Alert/Incident + Channels live delivery
+│   ├── ai_engine/               # placeholder only; inference remains external
+│   ├── notifications/           # durable Notification/Celery; future FCM
 │   ├── reports/                 # Report, PDF/Excel generation services (Celery)
 │   ├── audit/                   # AuditLog, middleware/signal listeners
 │   ├── attachments/              # Attachment (generic file registry) — see note above
@@ -212,8 +211,8 @@ sflms/
 
 ### 3.10 notifications app
 
-**Notification**: `id`, `user` FK, `type` (`security_alert`/`maintenance_due`/`material_low_stock`/`incident`/`system`)، `title`, `message`, `related_module`, `related_id`, `is_read` (Boolean)، `created_at`
-> Index: composite `(user_id, is_read)`, `created_at`
+**Notification**: `id`, `recipient` FK، `title`, `body`, `category` (`project`/`material`/`maintenance`/`security`/`system`)، `tone` (`neutral`/`info`/`success`/`warning`/`critical`)، `href` (nullable)، `source_type` (nullable)، `source_id` (nullable)، `deduplication_key` (nullable/unique)، `read_at` (nullable)، وحقول `BaseModel`
+> كل سجل يخص مستلمًا واحدًا؛ `is_read` خاصية مشتقة من `read_at`. Indexes: `(recipient_id, read_at, created_at)` و`(source_type, source_id)`
 
 ---
 
@@ -304,7 +303,7 @@ User (1) ──< Report (M)
 | Notifications | `/api/notifications/` | `{id}/mark-read/`, `mark-all-read/`, `unread-count/` |
 | Reports | `/api/reports/` | `generate/` (POST → queues Celery job), `{id}/download/` |
 | Audit Logs | `/api/audit/` | read-only، Super Admin فقط |
-| WebSocket | `/ws/notifications/` | Channels consumer, JWT auth عبر query param/header |
+| WebSocket | `/ws/security/events/` | بث أحداث أمنية محفوظة عبر Channels، مع JWT access token ضمن WebSocket subprotocol؛ لا يقبل AIKey ولا query-string token |
 
 كل Endpoint هيتوثّق تلقائيًا عبر **drf-spectacular** (Swagger/OpenAPI) زي ما طلبت في المواصفة الأولى.
 
@@ -332,49 +331,24 @@ User (1) ──< Report (M)
 
 ---
 
-## 7. AI Integration Architecture — تفصيل الـ Pipeline
+## 7. AI Integration Architecture — Current Approved Boundary
 
 ```
-Camera Stream (RTSP)
-        │
-        ▼
-OpenCV Frame Capture Layer  (management command / long-running process
-                              يسحب frames بمعدل محدد، مش كل الـ frames)
-        │
-        ▼
-Celery Task: process_frame.delay(camera_id, frame)
-        │  (async — لا يوقف أي API request)
-        ▼
-YOLO Inference (داخل الـ Celery worker)
-        │
-        ▼
-    confidence >= threshold?
-        │
-    ┌───┴───┐
-   NO       YES
-    │         │
- discard   CameraDetectionEvent (يتسجل دايمًا كـ audit trail خام)
-              │
-              ▼
-        Deduplication check:
-        فيه Alert مفتوح من نفس (camera + alert_type) في آخر N ثانية؟
-              │
-        ┌─────┴─────┐
-       YES           NO
-        │             │
-   يتضاف كـ        SecurityAlert جديد يتخلق
-   detection      (source='ai_detection')
-   إضافي بس           │
-   مفيش Alert جديد    ▼
-                  Notification (DB + WebSocket broadcast فوري
-                                 للـ Security Officers المُسندين
-                                 على الـ Facility)
+External AI service
+  → AIKey-authenticated REST configuration reads
+  → external inference/tracking/OCR
+  → idempotent final CameraEvent REST ingestion
+  → optional SecurityAlert persisted in the same transaction
+  → post-commit Channels delivery to authorized human dashboards
+
+Independent durable/mobile path:
+SecurityAlert → Notification → Celery → future FCM
 ```
 
-**قرارات تقنية معلّقة أحتاج تأكيدك عليها (تفصيل تقني، مش معماري):**
-- **Threshold الافتراضي** لكل `detection_type` (مثلاً Fire=0.75، Intrusion=0.6) — هل عندك أرقام محددة من فريق الـ AI، أو أبدأ بقيم افتراضية قابلة للتعديل من `AIModel`/إعدادات؟
-- **نافذة الـ Deduplication** (كام ثانية نعتبر الحدث "نفسه" بدل ما يتكرر Alert كل frame) — اقترح تبدأ بـ 60 ثانية قابلة للتعديل.
-- **معدل سحب الـ Frames** من كل كاميرا (كل ثانية؟ كل نص ثانية؟) — ده بيأثر مباشرة على حِمل الـ Celery workers.
+Django does not capture frames or run YOLO, OCR, ByteTrack, OpenCV, temporal
+filtering, line crossing, or tamper inference. It stores current configuration
+and final persisted domain events only. WebSocket delivery never accepts
+AIKey and never substitutes for REST persistence or initial state.
 
 ---
 
@@ -387,8 +361,8 @@ YOLO Inference (داخل الـ Celery worker)
 | **Phase 3 — Construction Domain** | `projects`, `construction`, `materials` كاملة بـ APIs |
 | **Phase 4 — Operations Domain** | `facilities`, `assets`, `maintenance` كاملة، + service الـ `convert_project_to_facility` |
 | **Phase 5 — Security Domain (بدون AI)** | `security` app كامل (Camera, Alert, Incident) بإدخال يدوي أولاً لضمان الـ workflow سليم قبل ربط AI |
-| **Phase 6 — AI Engine** | Celery + Redis setup، OpenCV capture layer، YOLO integration، `ai_engine` app، ربطها بـ `security` |
-| **Phase 7 — Real-Time Layer** | Django Channels + WebSocket consumers + `notifications` app |
+| **Phase 6 — External AI Contracts** | AIKey/camera scope، CameraEvent final ingestion، camera configuration APIs؛ inference خارج Django |
+| **Phase 7 — Real-Time Layer** | `/ws/security/events/` + JWT subprotocol + post-commit Channels delivery مستقلة عن Notification |
 | **Phase 8 — Reporting** | `reports` app + PDF/Excel generation عبر Celery |
 | **Phase 9 — Audit & Hardening** | `audit` app، Audit middleware/signals، مراجعة أمنية شاملة لكل الـ Permission classes |
 | **Phase 10 — Integration Testing** | ربط كامل مع الـ Frontend الموجود، اختبار كل الـ workflows end-to-end |

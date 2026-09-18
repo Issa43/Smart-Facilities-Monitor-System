@@ -19,8 +19,19 @@ from apps.projects.services import (
     convert_project_to_facility,
     start_project,
 )
+from apps.security.machine_credentials import (
+    add_ai_ingestion_camera_scope,
+    create_ai_ingestion_credential,
+    remove_ai_ingestion_camera_scope,
+    revoke_ai_ingestion_credential,
+    rotate_ai_ingestion_credential,
+)
+from apps.security.models import AIIngestionCredential, Camera
 
 from .serializers import (
+    AIIngestionCameraScopeInputSerializer,
+    AIIngestionCredentialCreateSerializer,
+    AIIngestionCredentialReadSerializer,
     CompleteProjectSerializer,
     FacilityConversionSerializer,
     ProjectAssignmentSerializer,
@@ -36,6 +47,107 @@ def _domain_conflict(error):
     return DomainConflict(detail=details)
 
 
+class AIIngestionCredentialViewSet(
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Super Admin-only lifecycle management for scoped machine credentials."""
+
+    permission_classes = [IsSuperAdmin]
+    queryset = AIIngestionCredential.all_objects.select_related(
+        "principal", "revoked_by", "created_by"
+    )
+    serializer_class = AIIngestionCredentialReadSerializer
+    filterset_fields = ["is_active", "key_id"]
+    search_fields = ["name", "key_id"]
+    ordering_fields = ["name", "created_at", "expires_at", "last_used_at"]
+    ordering = ["-created_at"]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def create(self, request, *args, **kwargs):
+        payload = AIIngestionCredentialCreateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            credential, secret = create_ai_ingestion_credential(
+                actor=request.user,
+                request=request,
+                **payload.validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise _domain_conflict(exc) from exc
+        response = AIIngestionCredentialReadSerializer(
+            credential,
+            context=self.get_serializer_context(),
+        ).data
+        response["secret"] = secret
+        response["authorization_scheme"] = "AIKey"
+        return Response(response, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def rotate(self, request, pk=None):
+        try:
+            credential, secret = rotate_ai_ingestion_credential(
+                credential_id=self.get_object().pk,
+                actor=request.user,
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            raise _domain_conflict(exc) from exc
+        response = self.get_serializer(credential).data
+        response["secret"] = secret
+        response["authorization_scheme"] = "AIKey"
+        return Response(response)
+
+    @action(detail=True, methods=["post"])
+    def revoke(self, request, pk=None):
+        try:
+            credential = revoke_ai_ingestion_credential(
+                credential_id=self.get_object().pk,
+                actor=request.user,
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            raise _domain_conflict(exc) from exc
+        return Response(self.get_serializer(credential).data)
+
+    @action(detail=True, methods=["post"], url_path="scopes")
+    def add_scope(self, request, pk=None):
+        payload = AIIngestionCameraScopeInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            add_ai_ingestion_camera_scope(
+                credential=self.get_object(),
+                camera=payload.validated_data["camera"],
+                actor=request.user,
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            raise _domain_conflict(exc) from exc
+        credential = self.get_queryset().get(pk=self.kwargs["pk"])
+        return Response(self.get_serializer(credential).data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"scopes/(?P<camera_id>[0-9a-fA-F-]{36})",
+    )
+    def remove_scope(self, request, pk=None, camera_id=None):
+        camera = get_object_or_404(Camera.objects, pk=camera_id)
+        try:
+            remove_ai_ingestion_camera_scope(
+                credential=self.get_object(),
+                camera=camera,
+                actor=request.user,
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            raise _domain_conflict(exc) from exc
+        credential = self.get_queryset().get(pk=self.kwargs["pk"])
+        return Response(self.get_serializer(credential).data)
+
+
 class ProjectViewSet(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -45,7 +157,9 @@ class ProjectViewSet(
     viewsets.GenericViewSet,
 ):
     permission_classes = [IsSuperAdmin]
-    queryset = Project.objects.select_related("facility", "created_by").prefetch_related("assignments", "phases")
+    queryset = Project.objects.select_related("facility", "created_by").prefetch_related(
+        "assignments__user", "phases"
+    )
     filterset_fields = ["status", "facility_type", "facility"]
     search_fields = ["name", "description", "location"]
     ordering_fields = [

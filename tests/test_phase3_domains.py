@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 import unittest
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import close_old_connections, connection, connections
 from django.test import TestCase, TransactionTestCase
@@ -58,6 +58,7 @@ from apps.security.services import (
     convert_alert_to_incident,
     record_incident_action,
     review_security_alert,
+    set_incident_action_completion,
     start_incident_investigation,
 )
 from apps.users.models import Role, User
@@ -220,7 +221,7 @@ class Phase3DomainTestCase(TestCase):
             priority=MaterialRequest.Priority.HIGH,
             created_by=self.manager,
         )
-        review_material_request(request.pk)
+        review_material_request(request.pk, actor=self.admin)
         approve_material_request(request.pk, actor=self.admin)
         fulfill_material_request(request.pk)
         request.refresh_from_db()
@@ -282,7 +283,7 @@ class Phase3DomainTestCase(TestCase):
             created_by=self.manager,
         )
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(PermissionDenied):
             approve_material_request(request.pk, actor=self.manager)
 
         request.refresh_from_db()
@@ -411,6 +412,18 @@ class Phase3DomainTestCase(TestCase):
         with self.assertRaises(ValidationError):
             action.save()
         start_incident_investigation(incident_id=incident.pk)
+        with self.assertRaises(ValidationError):
+            close_incident(
+                incident_id=incident.pk,
+                actor=self.security_user,
+                final_report="Pending response action",
+            )
+        set_incident_action_completion(
+            incident_id=incident.pk,
+            action_id=action.pk,
+            actor=self.security_user,
+            completed=True,
+        )
         close_incident(
             incident_id=incident.pk,
             actor=self.security_user,

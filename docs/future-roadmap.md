@@ -18,23 +18,21 @@ N/A.
 ## Technical Notes
 
 ### AI Engine
-- License plate recognition raising active `SecurityAlert`s against an
-  authorized-vehicle allowlist (currently `VehicleRecognition` is passive
-  logging only — see `ai-engine.md` §Future Evolution).
-- Additional detection types beyond the initial set (Fire, Smoke,
-  Intrusion, Unauthorized Presence, Vehicle) as facility needs are
-  identified — the `AIModel`/`CameraDetectionEvent` schema already
-  supports adding a new `detection_type` without a structural change.
-- On-camera edge inference (moving YOLO closer to the camera rather than
-  centralizing in `celery_worker`) if network bandwidth or latency ever
-  becomes a constraint at scale — a significant architecture change,
-  would need its own ADR if pursued.
+- External Fire/Smoke, Intrusion, ANPR, and independent Tamper services submit
+  only final `CameraEvent` contracts through camera-scoped AIKey credentials.
+  ANPR uses the authoritative authorized-vehicle registry and creates a
+  high-severity alert only for unauthorized vehicles.
+- Model inference, OCR, association, thresholding, line crossing, and raw-frame
+  processing remain external to Django. Adding another event type requires a
+  deliberate contract and alert-policy decision, not a legacy generic schema.
+- On-camera edge inference remains a possible external deployment choice; it
+  would require its own ADR and does not move inference into Django or Celery.
 
 ### Notifications
-- Web push / mobile push notifications (outside the WebSocket channel)
-  for users not actively viewing the frontend.
-- Notification preferences per user (which event types trigger a push
-  vs. in-app-only).
+- Batch 5 implements FCM mobile push for eligible camera SecurityAlerts outside
+  the WebSocket channel and honors per-user Notification preferences.
+- Other notification categories and web push remain future, policy-specific
+  work.
 
 ### Reporting
 - Scheduled/recurring reports via Celery Beat (e.g., automatic weekly

@@ -26,6 +26,7 @@ creates writable static/media/Celery directories, and runs as the unprivileged
 | `redis` | Celery broker/result backend, Django cache, Channels layer | Port 6379 in development override only |
 | `celery_worker` | Executes infrastructure and future domain tasks | None |
 | `celery_beat` | Runs future periodic task schedules | None |
+| `frontend` | Versioned Nginx SPA image and `/api/` reverse proxy in production | Port 8080 by default |
 
 PostgreSQL and Redis must pass native health checks before any application
 container starts. The shared entrypoint then performs authenticated readiness
@@ -38,10 +39,11 @@ checks before launching each process. Only `backend` runs migrations and
 - `docker-compose.override.yml` is applied automatically for local development:
   source bind mounts, development settings, Django `runserver`, and host ports.
 
-Production must explicitly omit the override:
+Production must explicitly omit the development override and include the
+production overlay:
 
 ```bash
-docker compose -f docker-compose.yml up -d --build
+IMAGE_TAG=<release> docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
 ```
 
 ### Networking
@@ -76,10 +78,9 @@ the normal stop/restart workflow.
 Dependency checks return HTTP 503 without exposing connection details.
 
 ### Static and media
-WhiteNoise serves collected static files from `STATIC_ROOT`. Media remains on
-the shared `media_data` volume and is served by Django only while `DEBUG=True`;
-a production reverse proxy/object-storage layer will serve media later without
-changing model fields.
+WhiteNoise serves collected Django/admin static files. The frontend image serves
+the compiled SPA. Protected media is never mounted into Nginx and is available
+only through authenticated Django download actions.
 
 ## Business Rules
 None. This phase adds infrastructure only and no domain models or APIs.
@@ -89,13 +90,15 @@ None. This phase adds infrastructure only and no domain models or APIs.
 - `DATABASE_URL`, when non-empty, overrides component `DB_*` variables.
 - The production settings module rejects the known placeholder `SECRET_KEY`.
 - Redis AOF is enabled for improved restart durability.
-- The empty ASGI WebSocket router is intentional; Phase 7 adds routes and JWT
-  middleware without changing the `ProtocolTypeRouter` foundation.
+- The ASGI WebSocket router exposes `/ws/security/events/` through JWT
+  subprotocol middleware and the existing `ProtocolTypeRouter`. Daphne remains
+  the sole application server and Redis database `/2` remains the Channels
+  layer; no additional broker or WebSocket service is introduced.
 
 ## Current Implementation
-The Dockerfile, both Compose files, entrypoint, readiness script, health checks,
-cache, Celery, and Channels foundation are implemented in Phase 2. Runtime
-verification requires a host with Docker Engine/Compose available.
+Backend/frontend Dockerfiles, development/E2E/restore/production overlays,
+entrypoint, readiness scripts, health checks, cache, Celery, and Channels are
+implemented and verified locally.
 
 ## Future Evolution
 - A reverse proxy/TLS service may be added for a concrete deployment target.

@@ -1,144 +1,137 @@
-# AI Engine
+# External AI Integration
 
-## Purpose
-Explains the computer-vision pipeline end-to-end: how a video frame
-becomes a Security Alert, and how material/asset predictions are produced
-— the design that lets YOLO run inside Django without blocking API
-requests.
+## Scope boundary
 
-## Scope
-The AI processing pipeline and its data model. Camera *ingestion*
-mechanics (RTSP handling, recording storage) are `camera-processing.md`;
-what happens after an Incident is created is `business-domain.md`.
+AI/CV models run outside Django. SFLMS does not implement or host inference,
+OpenCV capture, YOLO, OCR, tracking, ByteTrack, temporal filtering, model
+training, datasets, thresholds, or weights. Raw frames and raw per-frame
+detections must not be stored by this integration.
 
-## Architecture
+The future integration contract is:
 
-### Detection pipeline (specified, Phase 6)
-```
-IP Camera (RTSP)
-    │
-    ▼
-OpenCV frame capture  (runs inside celery_worker, NOT inside a web request)
-    │  captures at a configured rate, not every frame
-    ▼
-Celery task: process_frame(camera_id, frame)   — fully async, non-blocking
-    │
-    ▼
-YOLO inference
-    │
-    ▼
-confidence >= per-detection-type threshold?
-    │
-   ┌┴───────────┐
-  NO            YES
-   │              │
- discard    CameraDetectionEvent   ← ALWAYS written (AI's own audit trail,
-                │                      independent of SecurityAlert)
-                ▼
-      deduplication check: open SecurityAlert already exists for
-      (camera, detection_type) within the dedup window?
-                │
-        ┌───────┴────────┐
-       YES                NO
-        │                  │
-   attach as another   new SecurityAlert
-   detection on the    (source="ai_detection")
-   existing alert            │
-   (no new alert)            ▼
-                        Notification (DB write + Channels broadcast
-                                       to assigned Security Officers)
+```text
+External AI service -> authenticated REST -> Django -> database
 ```
 
-### Prediction pipelines (specified, Phase 3/4 + 6)
-- **Material consumption prediction**: `MaterialConsumptionRecord` history
-  → periodic Celery task → `MaterialPrediction`
-  (`predicted_date`, `predicted_quantity`, `confidence_score`). Advisory
-  only — never auto-creates a `MaterialRequest` (see `business-domain.md`).
-- **Asset health prediction**: maintenance/fault history → periodic Celery
-  task → `AssetHealthHistory` row (`health_score`, `risk_level`,
-  `remaining_useful_life`, `prediction_source`). Feeds the Asset Health
-  Center charts; advisory only, never auto-creates a `MaintenanceOrder`.
+Django accepts final confirmed events through the Batch 2 `CameraEvent`
+contract. `apps/ai_engine/` remains a placeholder and is not evidence of
+in-process AI functionality.
 
-### False positive review loop
-`SecurityAlert.is_false_positive` / `reviewed_by` / `review_notes` are set
-by a Security Officer reviewing a past alert. This is intentionally
-**not** a delete or hide operation — false-positive rate per
-`detection_type`/camera is itself a metric worth tracking to decide when
-to raise or lower a threshold, so the original alert record is preserved.
+## Machine authentication (Batch 1)
 
-### Vehicle recognition
-`VehicleRecognition` (plate_number, vehicle_type, entry_time, exit_time,
-confidence) is a parallel, independent pipeline sharing the same camera
-frame-capture layer but a different model (`AIModel.type="vehicle_recognition"`)
-— it does not produce `SecurityAlert` rows by default (an unrecognized or
-unauthorized plate could, as a future rule — see Future Evolution).
+External AI services authenticate with dedicated machine credentials. They do
+not use human JWTs and do not impersonate Super Admin, Security Officer,
+Operations Manager, or Construction Manager.
 
-## Business Rules
-See `business-domain.md` §AI Lifecycle for the full rule set. Key
-constraints repeated here for AI-specific context:
-- Every qualifying inference is logged (`CameraDetectionEvent`) whether or
-  not it becomes an Alert — this is non-negotiable for auditability of
-  the AI system's own behavior, independent of the Security audit trail.
-- Deduplication window and per-type confidence thresholds are
-  configuration (see `environment.md`), not hardcoded — tunable without a
-  code deploy.
+Each credential has:
 
-## Technical Notes
-- **Why YOLO runs inside Django** rather than a separate microservice:
-  reduces operational complexity for the current Docker-first, single
-  deployment target while keeping inference off the request/response
-  cycle via Celery (ADR-0008). The architecture is deliberately not
-  precluding a future extraction — `ai_engine`'s `tasks.py` boundary is
-  exactly where a future service split would happen, with `celery_worker`
-  becoming a remote caller instead of an in-process one.
-- **Model versioning**: `AIModel` (`name`, `type`, `version`, `status`)
-  lets multiple model versions coexist during a rollout; every
-  `CameraDetectionEvent` records which `AIModel` produced it.
-- **Frame rate and thresholds**: not yet finalized with real numbers —
-  tracked as an open question, see Future Evolution.
+- a roleless, non-interactive User principal with an unusable password;
+- a public `key_id` and a securely hashed secret;
+- expiration and revocation state;
+- explicit active Camera scopes.
 
-## Current Implementation
-Not implemented. `apps/ai_engine/` is a placeholder. This document
-specifies the Phase 6 target.
+The wire format is:
 
-## Future Evolution
-Open questions to resolve before/during Phase 6 implementation (carried
-over from the architecture review, not yet decided):
-- Per-`detection_type` confidence thresholds (proposed starting point:
-  Fire=0.75, Smoke=0.70, Intrusion=0.60 — needs validation against real
-  model performance, not guessed values to ship as-is).
-- Deduplication window (proposed starting point: 60 seconds, tunable).
-- Frame capture rate per camera (affects `celery_worker` load directly —
-  needs a load test once real cameras are available, not a desk decision).
-- Whether unauthorized vehicle recognition should raise a `SecurityAlert`
-  — currently out of scope, flagged as a candidate for `future-roadmap.md`.
+```http
+Authorization: AIKey <key_id>:<secret>
+```
 
-## Important Decisions
-YOLO inside Django + Celery (ADR-0008). DetectionEvent kept structurally
-separate from SecurityAlert (documented in `business-domain.md`, not yet
-its own ADR — candidate if ever revisited).
+The plaintext secret is returned only when a Super Admin creates or rotates a
+credential. It is never stored or returned by list/detail/revoke operations.
+TLS is required in deployment.
 
-## Developer Notes
-Never call YOLO inference synchronously from a view or serializer — it
-must always be a Celery task. If you find yourself importing a YOLO model
-in `views.py`, that's a defect.
+Authentication alone grants no camera access. Event ingestion calls the shared
+camera-scope authorization service and derives the Facility from
+`Camera.facility`; it never trusts a client-supplied Facility.
 
-## Related Components
-`camera-processing.md`, `notifications.md`, `business-domain.md`,
-`celery-tasks.md`.
+## Final event ingestion (Batch 2)
 
-## Files Involved
-`apps/ai_engine/*` (not yet created), `apps/security/models.py` (future,
-`SecurityAlert`, `Incident`).
+`CameraEvent` is the durable final-event record. Machine-authenticated POST is
+idempotent on `(ingestion_credential, source_event_id)`. An identical retry
+returns the existing event; a conflicting retry is rejected. Continuous
+tracked observations PATCH the same event and may update only confidence,
+bounds, duration, confirmation time, or protected snapshot. PATCH never
+creates another alert, notification, Incident, or semantic creation audit.
 
-## Dependencies
-`glossary.md`, `business-domain.md`, `celery-tasks.md`.
+Alertable events create one `SecurityAlert` in the same database transaction.
+Authorized vehicle entry/exit remains a CameraEvent without an alert.
+`SecurityAlert` owns human review, false-positive, dismissal, and Incident
+conversion state; `CameraEvent.status` is a read projection rather than a
+second persisted workflow status.
 
-## Things That MUST NEVER Be Changed Without Updating Documentation
-The rule that every qualifying detection is logged regardless of alert
-conversion. The advisory-only nature of predictions.
+The authoritative external POST contract uses `camera_id` for the scoped
+Camera and `class` for the classified object. The serializer maps those wire
+names to the existing internal `camera` and `object_class` fields. Internal
+field names are not accepted as alternate POST aliases, and `source_event_id`
+remains mandatory for idempotency.
 
-## Future Improvements
-License plate recognition against an authorized-vehicle allowlist (raises
-the vehicle pipeline from passive logging to active alerting) — tracked
-in `future-roadmap.md`, not scheduled to a phase yet.
+Snapshots are pre-placed by the external service under
+`security/camera-events/{facility_uuid}/{camera_uuid}/{opaque_filename}.jpg`.
+Django verifies the protected object, prefix, extension, and image signature.
+Storage keys and public media URLs are not serialized.
+
+## Current configuration contracts (Batch 3)
+
+Django now owns the current configuration consumed by external AI services:
+
+- active ROIs are camera-owned polygons expressed as ordered pixel-space
+  `{x, y}` points; coordinates are finite and non-negative, polygons have at
+  least three distinct points, and Django performs no coordinate transforms;
+- each ROI may have one current restricted schedule. `timezone_name` is an
+  IANA identifier, `days_of_week` uses `0=Monday` through `6=Sunday`, and each
+  listed day denotes the local start day. A range such as `22:00` to `06:00`
+  continues into the following local day. Always-restricted schedules carry
+  no times or days;
+- each camera may have one current virtual line, represented by two distinct
+  finite, non-negative pixel-space endpoints. Crossing and direction remain
+  external responsibilities;
+- the authorized-vehicle registry stores a minimally normalized plate (trimmed
+  and uppercased), responsible name, optional inclusive expiration date, and
+  active state. A plate is currently authorized only while active and when
+  `expires_on` is null or is today/future in Django's configured local date;
+- a camera may independently enable any combination of `fire_smoke`,
+  `intrusion`, `anpr`, and `tamper`.
+
+AIKey credentials can read only active configuration for active cameras and
+facilities within their explicit scopes. Machine access is read-only. Human
+configuration reads and mutations use JWT and are Super Admin-only because
+the existing human RBAC vocabulary contains no camera-configuration grant.
+Authorized-vehicle machine lookup is available only to a credential with an
+ANPR-enabled camera in its scope and omits responsible-person data.
+
+Configuration is current/future processing state. Disable is soft, and
+configuration changes never rewrite historical CameraEvents. A supplied
+`CameraEvent.roi_id` must resolve to an active ROI belonging to the event's
+authorized camera; tamper and vehicle events do not accept ROI.
+
+The backend provides configuration and final-event ingestion contracts. AI
+inference remains external to Django.
+
+Implemented downstream consumers remain server-owned and independent:
+
+- Channels/WebSocket live event delivery;
+- durable Notification/Celery/FCM delivery for eligible SecurityAlerts.
+
+AI models, inference, streams, frames, and raw detections remain outside this
+repository.
+
+## Credential administration
+
+Super Admin-only routes are mounted at:
+
+```text
+/api/v1/admin/ai-ingestion-credentials/
+```
+
+Supported operations are create, list, detail, rotate, revoke, add Camera
+scope, and deactivate Camera scope. Semantic audit actions never contain a
+secret, secret hash, or Authorization header.
+
+## Related components
+
+- `authentication.md`
+- `camera-processing.md`
+- `api-specification.md`
+- `apps/security/models.py`
+- `apps/security/machine_credentials.py`
+- `apps/security/authentication.py`

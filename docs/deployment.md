@@ -28,15 +28,17 @@ and publishes backend/PostgreSQL/Redis ports for local tools.
 Production explicitly excludes the development override:
 
 ```bash
-docker compose -f docker-compose.yml config
-docker compose -f docker-compose.yml build
-docker compose -f docker-compose.yml up -d
-docker compose -f docker-compose.yml ps
+IMAGE_TAG=<release-version> docker compose -f docker-compose.yml -f docker-compose.production.yml config
+IMAGE_TAG=<release-version> docker compose -f docker-compose.yml -f docker-compose.production.yml build
+IMAGE_TAG=<release-version> docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
+IMAGE_TAG=<release-version> docker compose -f docker-compose.yml -f docker-compose.production.yml ps
 ```
 
-The base file uses Daphne with `config.settings.production`, does not publish
-PostgreSQL or Redis, applies restart policies, and expects an external reverse
-proxy/load balancer to reach backend port 8000 on the Docker network.
+The frontend Nginx image serves the SPA and proxies `/api/` internally to
+Daphne. PostgreSQL, Redis, backend, and protected media are not published. A
+platform load balancer must terminate TLS and forward
+`X-Forwarded-Proto: https`. Domain, certificate, registry, and secret-manager
+values are external decisions and block public rollout until supplied.
 
 ### Pre-deployment validation
 
@@ -82,8 +84,9 @@ The image is identical across backend/worker/beat and across environments.
 Environment variables and commands supply all runtime differences.
 
 ## Current Implementation
-Local and production-oriented Compose workflows are implemented. A concrete
-reverse proxy/TLS configuration and CI/CD automation are not yet selected.
+Local, isolated E2E/restore, and production image/proxy workflows are
+implemented. The versioned frontend image has been built successfully. Domain,
+TLS, registry/hosting values, and CI/CD remain external gates.
 
 ## Future Evolution
 - Add reverse proxy and TLS configuration for the selected host/platform.

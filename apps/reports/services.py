@@ -3,7 +3,7 @@ import json
 import math
 import textwrap
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from html import escape
 from uuid import UUID
@@ -42,7 +42,7 @@ DOMAIN_REPORT_COLUMNS = {
     ),
     Report.Module.FAULTS: (
         "asset_id", "asset__facility_id", "fault_type", "description",
-        "severity", "status", "root_cause", "resolution", "reported_date",
+        "severity", "status", "root_cause", "resolution", "discovery_time",
         "resolved_at",
     ),
     Report.Module.OPERATIONAL_PERFORMANCE: (
@@ -66,6 +66,182 @@ DOMAIN_REPORT_COLUMNS = {
         "taken_at", "completed_at",
     ),
 }
+
+CONSTRUCTION_EMPTY_MESSAGE = "No records matched the selected project and period."
+
+# Shared SFLMS report palette.
+#
+# The Construction Manager report defines the visual structure of the report
+# family — page frame, header block, metadata grid, section headings, table
+# style, summary block and footer. Every module renders with that structure and
+# with this one green accent, so a PDF and an XLSX of any report read as the
+# same document. Keeping the palette here means the accent is changed in one
+# place rather than in four renderers.
+REPORT_ACCENT_DARK = "#14532D"      # title band, section headings
+REPORT_ACCENT = "#1B7A44"           # table headers, rules
+REPORT_ACCENT_LIGHT = "#EAF4EE"     # metadata / summary panels
+REPORT_ACCENT_LIGHTER = "#F5FAF7"   # zebra striping
+REPORT_ACCENT_ON_DARK = "#E6F2EA"   # subtitle text on the accent band
+REPORT_BORDER = "#C3DCCB"           # table grid and panel outlines
+REPORT_BORDER_STRONG = "#AFCCBA"    # panel boxes
+REPORT_TEXT = "#22312A"             # body copy (neutral, not green)
+REPORT_MUTED = "#5F6F66"            # captions, footer
+
+
+def _argb(hex_color):
+    """``#RRGGBB`` to the ``FFRRGGBB`` form SpreadsheetML expects."""
+
+    return "FF" + hex_color.lstrip("#").upper()
+
+
+OPERATIONS_REPORT_MODULES = {
+    Report.Module.ASSETS,
+    Report.Module.MAINTENANCE,
+    Report.Module.FAULTS,
+    Report.Module.OPERATIONAL_PERFORMANCE,
+}
+OPERATIONS_EMPTY_MESSAGE = "No records matched the report parameters."
+OPERATIONS_COLUMN_LABELS = {
+    "id": "Facility ID",
+    "facility_id": "Facility ID",
+    "asset_id": "Asset ID",
+    "asset__facility_id": "Facility ID",
+    "asset_type": "Asset Type",
+    "serial_number": "Serial Number",
+    "current_status": "Current Status",
+    "health_score": "Health Score",
+    "remaining_useful_life": "Remaining Useful Life",
+    "expected_execution_date": "Expected Execution Date",
+    "actual_completion_date": "Actual Completion Date",
+    "fault_type": "Fault Type",
+    "root_cause": "Root Cause",
+    "discovery_time": "Discovery Time",
+    "resolved_at": "Resolved At",
+    "total_assets": "Total Assets",
+    "operational_assets": "Operational Assets",
+    "maintenance_assets": "Under Maintenance",
+    "out_of_service_assets": "Out of Service",
+    "average_health_score": "Average Health Score",
+}
+CONSTRUCTION_DAILY_COLUMN_LABELS = {
+    "project_id": "Project ID",
+    "phase_id": "Phase ID",
+    "report_date": "Report Date",
+    "phase_name": "Phase",
+    "title": "Title",
+    "report_content": "Summary",
+    "progress_percentage": "Progress Percentage",
+    "workers_count": "Workforce Count",
+    "weather_condition": "Weather Condition",
+    "equipment_used": "Equipment Used",
+    "issues": "Issues",
+    "author_name": "Author",
+}
+CONSTRUCTION_REPORT_SECTIONS = (
+    (
+        "phases",
+        "Phases",
+        (
+            ("sequence_number", "Sequence"),
+            ("name", "Name"),
+            ("priority", "Priority"),
+            ("status", "Status"),
+            ("start_date", "Start Date"),
+            ("expected_completion_date", "Expected Completion Date"),
+            ("actual_start_date", "Actual Start Date"),
+            ("actual_completion_date", "Actual Completion Date"),
+            ("current_progress", "Current Progress"),
+            ("approval_status", "Approval Status"),
+        ),
+    ),
+    (
+        "progress",
+        "Progress",
+        (
+            ("phase_name", "Phase"),
+            ("progress_percentage", "Progress Percentage"),
+            ("work_completed", "Work Completed"),
+            ("notes", "Notes"),
+            ("author_name", "Author"),
+            ("recorded_at", "Recorded At"),
+        ),
+    ),
+    (
+        "daily_reports",
+        "Daily Reports",
+        tuple(
+            (key, label)
+            for key, label in CONSTRUCTION_DAILY_COLUMN_LABELS.items()
+            if key not in {"project_id", "phase_id"}
+        ),
+    ),
+    (
+        "materials",
+        "Materials",
+        (
+            ("name", "Name"),
+            ("unit", "Unit"),
+            ("quantity_required", "Quantity Required"),
+            ("quantity_used", "Quantity Used"),
+            ("quantity_remaining", "Quantity Remaining"),
+            ("min_stock_threshold", "Minimum Stock Threshold"),
+            ("low_stock", "Low Stock"),
+        ),
+    ),
+    (
+        "material_requests",
+        "Material Requests",
+        (
+            ("material_name", "Material"),
+            ("quantity_requested", "Quantity Requested"),
+            ("unit", "Unit"),
+            ("reason", "Reason"),
+            ("priority", "Priority"),
+            ("status", "Status"),
+            ("requester_name", "Requester"),
+            ("created_at", "Created At"),
+            ("updated_at", "Updated At"),
+        ),
+    ),
+    (
+        "quality",
+        "Quality",
+        (
+            ("phase_name", "Phase"),
+            ("title", "Title"),
+            ("inspector_name", "Inspector"),
+            ("score", "Score"),
+            ("result", "Result"),
+            ("notes", "Notes"),
+            ("inspected_at", "Inspected At"),
+        ),
+    ),
+    (
+        "documents",
+        "Documents",
+        (
+            ("title", "Title"),
+            ("document_type", "Document Type"),
+            ("original_file_name", "Original Filename"),
+            ("mime_type", "MIME Type"),
+            ("file_size", "File Size"),
+            ("uploader_name", "Uploader"),
+            ("uploaded_at", "Uploaded At"),
+        ),
+    ),
+    (
+        "photos",
+        "Photos",
+        (
+            ("caption", "Caption"),
+            ("phase_name", "Phase"),
+            ("original_file_name", "Original Filename"),
+            ("mime_type", "MIME Type"),
+            ("file_size", "File Size"),
+            ("captured_at", "Captured At"),
+        ),
+    ),
+)
 
 
 def _require_active_actor(actor):
@@ -278,6 +454,11 @@ def _render_pdf(title, columns, rows):
     if not rows:
         lines.append("No records matched the report parameters.")
 
+    return _render_pdf_lines(lines)
+
+
+def _render_pdf_lines(lines):
+
     pages = [lines[index : index + 58] for index in range(0, len(lines), 58)] or [[]]
     font_object = 3 + (2 * len(pages))
     objects = {
@@ -326,6 +507,713 @@ def _render_pdf(title, columns, rows):
             f"startxref\n{xref_offset}\n%%EOF\n"
         ).encode("ascii")
     )
+    return output.getvalue()
+
+
+def _render_construction_pdf(dataset):
+    from arabic_reshaper import reshape
+    from bidi.algorithm import get_display
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (
+        KeepTogether,
+        LongTable,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    font_name = "SFLMSDejaVu"
+    pdfmetrics.registerFont(
+        TTFont(font_name, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+    )
+    page_size = landscape(A4)
+    page_width, page_height = page_size
+    margin = 12 * mm
+    content_width = page_width - (2 * margin)
+    metadata = dataset["metadata"]
+    project = dataset["project"]
+    summary = dataset["summary"]
+
+    def visual_text(value):
+        text = str(value)
+        if any("\u0600" <= character <= "\u06ff" for character in text):
+            return get_display(reshape(text))
+        return text
+
+    def display_value(value, key=None):
+        if value is None or value == "":
+            return "—"
+        if isinstance(value, datetime):
+            moment = value
+            if moment.tzinfo is not None:
+                moment = moment.astimezone(timezone.utc)
+                return moment.strftime("%Y-%m-%d %H:%M UTC")
+            return moment.strftime("%Y-%m-%d %H:%M")
+        if isinstance(value, date):
+            return value.strftime("%Y-%m-%d")
+        if isinstance(value, bool):
+            return "Yes" if value else "No"
+        if key == "file_size" and isinstance(value, (int, float, Decimal)):
+            return f"{float(value) / 1024:.1f} KB"
+        if key and ("progress" in key or "percentage" in key) and isinstance(
+            value, (int, float, Decimal)
+        ):
+            number = float(value)
+            return f"{number:.0f}%" if number.is_integer() else f"{number:.1f}%"
+        if isinstance(value, Decimal):
+            number = float(value)
+            return f"{number:.0f}" if number.is_integer() else f"{number:.2f}"
+        return str(value)
+
+    styles = getSampleStyleSheet()
+    base_style = ParagraphStyle(
+        "SFLMSBase",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=7,
+        leading=9,
+        textColor=colors.HexColor(REPORT_TEXT),
+        alignment=TA_LEFT,
+        splitLongWords=True,
+    )
+    label_style = ParagraphStyle(
+        "SFLMSLabel",
+        parent=base_style,
+        fontSize=6.5,
+        leading=8,
+        textColor=colors.HexColor(REPORT_MUTED),
+    )
+    heading_style = ParagraphStyle(
+        "SFLMSSectionHeading",
+        parent=base_style,
+        fontSize=12,
+        leading=15,
+        textColor=colors.HexColor(REPORT_ACCENT_DARK),
+        spaceBefore=8,
+        spaceAfter=5,
+        keepWithNext=True,
+    )
+    title_style = ParagraphStyle(
+        "SFLMSTitle",
+        parent=base_style,
+        fontSize=20,
+        leading=24,
+        textColor=colors.HexColor(REPORT_ACCENT_DARK),
+        alignment=TA_CENTER,
+        spaceAfter=3,
+    )
+    subtitle_style = ParagraphStyle(
+        "SFLMSSubtitle",
+        parent=base_style,
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor(REPORT_MUTED),
+        alignment=TA_CENTER,
+        spaceAfter=10,
+    )
+    table_header_style = ParagraphStyle(
+        "SFLMSTableHeader",
+        parent=base_style,
+        fontSize=6.5,
+        leading=8,
+        textColor=colors.white,
+        alignment=TA_CENTER,
+    )
+    empty_style = ParagraphStyle(
+        "SFLMSEmpty",
+        parent=base_style,
+        textColor=colors.HexColor(REPORT_MUTED),
+        leftIndent=8,
+    )
+
+    def paragraph(value, style=base_style, key=None):
+        displayed = visual_text(display_value(value, key))
+        alignment = TA_RIGHT if any(
+            "\u0600" <= character <= "\u06ff" for character in str(value)
+        ) else style.alignment
+        if alignment != style.alignment:
+            style = ParagraphStyle(
+                f"{style.name}RTL",
+                parent=style,
+                alignment=alignment,
+            )
+        return Paragraph(escape(displayed).replace("\n", "<br/>"), style)
+
+    def table_style(*, header=False):
+        commands = [
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTNAME", (0, 0), (-1, -1), font_name),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor(REPORT_BORDER)),
+            ("ROWBACKGROUNDS", (0, 1 if header else 0), (-1, -1), [colors.white, colors.HexColor(REPORT_ACCENT_LIGHTER)]),
+        ]
+        if header:
+            commands.extend(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(REPORT_ACCENT)),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor(REPORT_ACCENT_DARK)),
+                ]
+            )
+        return TableStyle(commands)
+
+    story = [
+        Paragraph("Construction Project Report", title_style),
+        Paragraph(visual_text(project["name"]), subtitle_style),
+    ]
+
+    metadata_rows = [
+        [
+            paragraph("Project", label_style),
+            paragraph(project["name"]),
+            paragraph("Period", label_style),
+            paragraph(metadata["period"]),
+        ],
+        [
+            paragraph("Date range", label_style),
+            paragraph(
+                f"{display_value(metadata['date_from'])} to {display_value(metadata['date_to'])}"
+                if metadata["date_from"] is not None
+                else "All available history"
+            ),
+            paragraph("Generated", label_style),
+            paragraph(metadata["generated_at"]),
+        ],
+        [
+            paragraph("Generated by", label_style),
+            paragraph(metadata["generated_by"]),
+            paragraph("Project ID", label_style),
+            paragraph(project["id"]),
+        ],
+    ]
+    metadata_table = Table(
+        metadata_rows,
+        colWidths=[26 * mm, 70 * mm, 26 * mm, content_width - (122 * mm)],
+        hAlign="LEFT",
+    )
+    metadata_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(REPORT_ACCENT_LIGHT)),
+                ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor(REPORT_BORDER_STRONG)),
+                ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor(REPORT_BORDER)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.extend([metadata_table, Spacer(1, 7), Paragraph("Project Overview", heading_style)])
+
+    overview_rows = []
+    for label, key in (
+        ("Name", "name"),
+        ("Description", "description"),
+        ("Location", "location"),
+        ("Facility Type", "facility_type"),
+        ("Status", "status"),
+        ("Start Date", "start_date"),
+        ("Expected Completion", "expected_completion_date"),
+        ("Actual Completion", "actual_completion_date"),
+        ("Overall Progress", "overall_progress"),
+    ):
+        overview_rows.append(
+            [paragraph(label, label_style), paragraph(project.get(key), key=key)]
+        )
+    overview_table = Table(overview_rows, colWidths=[38 * mm, content_width - (38 * mm)])
+    overview_table.setStyle(table_style())
+    story.extend([overview_table, Paragraph("Summary", heading_style)])
+
+    summary_items = (
+        ("Phases", "phase_count"),
+        ("Progress Entries", "progress_count"),
+        ("Daily Reports", "daily_report_count"),
+        ("Materials", "material_count"),
+        ("Open Material Requests", "open_material_request_count"),
+        ("Failed Inspections", "failed_inspection_count"),
+        ("Documents", "document_count"),
+        ("Photos", "photo_count"),
+    )
+    summary_rows = []
+    for index in range(0, len(summary_items), 2):
+        left_label, left_key = summary_items[index]
+        right_label, right_key = summary_items[index + 1]
+        summary_rows.append(
+            [
+                paragraph(left_label, label_style),
+                paragraph(summary[left_key]),
+                paragraph(right_label, label_style),
+                paragraph(summary[right_key]),
+            ]
+        )
+    summary_table = Table(
+        summary_rows,
+        colWidths=[46 * mm, 20 * mm, 46 * mm, content_width - (112 * mm)],
+    )
+    summary_table.setStyle(table_style())
+    story.append(summary_table)
+
+    wide_keys = {
+        "description",
+        "work_completed",
+        "notes",
+        "report_content",
+        "equipment_used",
+        "issues",
+        "reason",
+        "caption",
+        "original_file_name",
+    }
+    medium_keys = {
+        "name",
+        "title",
+        "phase_name",
+        "author_name",
+        "requester_name",
+        "inspector_name",
+        "uploader_name",
+        "progress_percentage",
+        "current_progress",
+        "workers_count",
+        "weather_condition",
+        "approval_status",
+        "result",
+    }
+    for section in dataset["sections"]:
+        columns = section["columns"]
+        rows = section["rows"]
+        heading = Paragraph(section["title"], heading_style)
+        if not rows:
+            story.append(
+                KeepTogether(
+                    [
+                        heading,
+                        Table(
+                            [[paragraph(CONSTRUCTION_EMPTY_MESSAGE, empty_style)]],
+                            colWidths=[content_width],
+                            style=TableStyle(
+                                [
+                                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(REPORT_ACCENT_LIGHTER)),
+                                    ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor(REPORT_BORDER)),
+                                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                                ]
+                            ),
+                        ),
+                    ]
+                )
+            )
+            continue
+
+        weights = [
+            3
+            if key in wide_keys
+            else 1.6
+            if key in medium_keys
+            else 1.35
+            if "date" in key or key.endswith("_at")
+            else 1
+            for key, _ in columns
+        ]
+        weight_total = sum(weights)
+        widths = [content_width * weight / weight_total for weight in weights]
+        table_rows = [
+            [paragraph(label, table_header_style) for _, label in columns]
+        ]
+        table_rows.extend(
+            [paragraph(row.get(key), key=key) for key, _ in columns] for row in rows
+        )
+        section_table = LongTable(
+            table_rows,
+            colWidths=widths,
+            repeatRows=1,
+            splitByRow=1,
+            hAlign="LEFT",
+        )
+        section_table.setStyle(table_style(header=True))
+        story.extend([heading, section_table])
+
+    def page_frame(canvas, document):
+        canvas.saveState()
+        canvas.setFont(font_name, 7)
+        canvas.setFillColor(colors.HexColor(REPORT_MUTED))
+        canvas.drawString(margin, page_height - (8 * mm), "SFLMS | Construction Project Report")
+        project_context = visual_text(project["name"])
+        canvas.drawRightString(page_width - margin, page_height - (8 * mm), project_context)
+        canvas.setStrokeColor(colors.HexColor(REPORT_BORDER_STRONG))
+        canvas.setLineWidth(0.5)
+        canvas.line(margin, page_height - (10 * mm), page_width - margin, page_height - (10 * mm))
+        canvas.line(margin, 9 * mm, page_width - margin, 9 * mm)
+        canvas.drawString(margin, 5.5 * mm, f"Generated {display_value(metadata['generated_at'])}")
+        canvas.drawRightString(page_width - margin, 5.5 * mm, f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    output = io.BytesIO()
+    document = SimpleDocTemplate(
+        output,
+        pagesize=page_size,
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=16 * mm,
+        bottomMargin=14 * mm,
+        title="Construction Project Report",
+        author="SFLMS",
+    )
+    document.build(story, onFirstPage=page_frame, onLaterPages=page_frame)
+    return output.getvalue()
+
+
+def _operations_column_label(column, module=None):
+    # A bare ``id`` is a facility identifier only in the operations modules,
+    # whose rows are facilities. For every other module it is that module's own
+    # record id, so the operations label would mislabel the column.
+    if column == "id" and module is not None and module not in OPERATIONS_REPORT_MODULES:
+        return "ID"
+    return OPERATIONS_COLUMN_LABELS.get(
+        column,
+        column.replace("__", " ").replace("_", " ").title(),
+    )
+
+
+def _operations_report_metadata(report, title, row_count):
+    parameters = _report_filters(report)
+    date_from = parameters.get("date_from")
+    date_to = parameters.get("date_to")
+    if parameters.get("period_label"):
+        period = parameters["period_label"]
+    elif date_from and date_to:
+        period = f"{date_from} to {date_to}"
+    elif date_from:
+        period = f"From {date_from}"
+    elif date_to:
+        period = f"Through {date_to}"
+    else:
+        period = "All available history"
+    return {
+        "title": title,
+        "period": period,
+        "facility": parameters.get("facility_id") or "Not specified",
+        "status": parameters.get("status") or "All statuses",
+        "generated_at": report.updated_at,
+        "generated_by": report.created_by.full_name,
+        "row_count": row_count,
+    }
+
+
+def _operations_display_value(value, key=None):
+    if value is None or value == "":
+        return "\u2014"
+    if isinstance(value, datetime):
+        moment = value
+        if moment.tzinfo is not None:
+            moment = moment.astimezone(timezone.utc)
+            return moment.strftime("%Y-%m-%d %H:%M UTC")
+        return moment.strftime("%Y-%m-%d %H:%M")
+    if isinstance(value, date):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if key and ("health_score" in key or "percentage" in key) and isinstance(
+        value, (int, float, Decimal)
+    ):
+        number = float(value)
+        return f"{number:.0f}%" if number.is_integer() else f"{number:.1f}%"
+    if isinstance(value, Decimal):
+        number = float(value)
+        return f"{number:.0f}" if number.is_integer() else f"{number:.2f}"
+    return str(value)
+
+
+def _render_operations_pdf(report, title, columns, rows):
+    from arabic_reshaper import reshape
+    from bidi.algorithm import get_display
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (
+        KeepTogether,
+        LongTable,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    font_name = "SFLMSDejaVu"
+    if font_name not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(
+            TTFont(font_name, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+        )
+    page_size = landscape(A4)
+    page_width, page_height = page_size
+    margin = 12 * mm
+    content_width = page_width - (2 * margin)
+    metadata = _operations_report_metadata(report, title, len(rows))
+
+    accent = colors.HexColor(REPORT_ACCENT)
+    accent_dark = colors.HexColor(REPORT_ACCENT_DARK)
+    accent_light = colors.HexColor(REPORT_ACCENT_LIGHT)
+    accent_lighter = colors.HexColor(REPORT_ACCENT_LIGHTER)
+    border = colors.HexColor(REPORT_BORDER)
+    text_color = colors.HexColor(REPORT_TEXT)
+    muted = colors.HexColor(REPORT_MUTED)
+
+    def visual_text(value):
+        text = str(value)
+        if any("\u0600" <= character <= "\u06ff" for character in text):
+            return get_display(reshape(text))
+        return text
+
+    styles = getSampleStyleSheet()
+    base_style = ParagraphStyle(
+        "OperationsBase",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=7,
+        leading=9,
+        textColor=text_color,
+        alignment=TA_LEFT,
+        splitLongWords=True,
+    )
+    label_style = ParagraphStyle(
+        "OperationsLabel",
+        parent=base_style,
+        fontSize=6.5,
+        leading=8,
+        textColor=accent_dark,
+    )
+    title_style = ParagraphStyle(
+        "OperationsTitle",
+        parent=base_style,
+        fontSize=20,
+        leading=24,
+        textColor=accent_dark,
+        alignment=TA_CENTER,
+        spaceAfter=3,
+    )
+    subtitle_style = ParagraphStyle(
+        "OperationsSubtitle",
+        parent=base_style,
+        fontSize=9,
+        leading=11,
+        textColor=muted,
+        alignment=TA_CENTER,
+        spaceAfter=10,
+    )
+    heading_style = ParagraphStyle(
+        "OperationsSectionHeading",
+        parent=base_style,
+        fontSize=12,
+        leading=15,
+        textColor=accent_dark,
+        spaceBefore=8,
+        spaceAfter=5,
+    )
+    header_style = ParagraphStyle(
+        "OperationsTableHeader",
+        parent=base_style,
+        fontSize=6.5,
+        leading=8,
+        textColor=colors.white,
+        alignment=TA_CENTER,
+    )
+    empty_style = ParagraphStyle(
+        "OperationsEmpty",
+        parent=base_style,
+        fontSize=8,
+        leading=11,
+        textColor=muted,
+        leftIndent=8,
+    )
+
+    def paragraph(value, style=base_style, key=None):
+        displayed = visual_text(_operations_display_value(value, key))
+        alignment = TA_RIGHT if any(
+            "\u0600" <= character <= "\u06ff" for character in str(value)
+        ) else style.alignment
+        if alignment != style.alignment:
+            style = ParagraphStyle(f"{style.name}RTL", parent=style, alignment=alignment)
+        return Paragraph(escape(displayed).replace("\n", "<br/>"), style)
+
+    story = [
+        Paragraph(visual_text(title), title_style),
+        Paragraph("SFLMS Operations Report", subtitle_style),
+    ]
+    metadata_rows = [
+        [
+            paragraph("Report Type", label_style),
+            paragraph(title),
+            paragraph("Period", label_style),
+            paragraph(metadata["period"]),
+        ],
+        [
+            paragraph("Facility Filter", label_style),
+            paragraph(metadata["facility"]),
+            paragraph("Status Filter", label_style),
+            paragraph(metadata["status"]),
+        ],
+        [
+            paragraph("Generated By", label_style),
+            paragraph(metadata["generated_by"]),
+            paragraph("Generated At", label_style),
+            paragraph(metadata["generated_at"]),
+        ],
+    ]
+    metadata_table = Table(
+        metadata_rows,
+        colWidths=[29 * mm, 67 * mm, 29 * mm, content_width - (125 * mm)],
+        hAlign="LEFT",
+    )
+    metadata_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), accent_light),
+                ("BOX", (0, 0), (-1, -1), 0.7, border),
+                ("INNERGRID", (0, 0), (-1, -1), 0.3, border),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.extend([metadata_table, Spacer(1, 7), Paragraph("Summary", heading_style)])
+    summary_table = Table(
+        [[paragraph("Records", label_style), paragraph(metadata["row_count"]) ]],
+        colWidths=[38 * mm, content_width - (38 * mm)],
+    )
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), accent_lighter),
+                ("BOX", (0, 0), (-1, -1), 0.5, border),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.append(summary_table)
+
+    if rows and columns:
+        wide_keys = {"description", "reason", "root_cause", "resolution", "location"}
+        medium_keys = {"name", "asset_type", "category", "serial_number", "fault_type"}
+        weights = [
+            2.7
+            if key in wide_keys
+            else 1.7
+            if key in medium_keys
+            else 1.4
+            if "date" in key or key.endswith("_at")
+            else 1
+            for key in columns
+        ]
+        weight_total = sum(weights)
+        widths = [content_width * weight / weight_total for weight in weights]
+        table_rows = [
+            [paragraph(_operations_column_label(column, report.module), header_style) for column in columns]
+        ]
+        table_rows.extend(
+            [paragraph(row.get(column), key=column) for column in columns] for row in rows
+        )
+        data_table = LongTable(
+            table_rows,
+            colWidths=widths,
+            repeatRows=1,
+            splitByRow=1,
+            hAlign="LEFT",
+        )
+        data_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("GRID", (0, 0), (-1, -1), 0.35, border),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, accent_lighter]),
+                    ("BACKGROUND", (0, 0), (-1, 0), accent),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.8, accent_dark),
+                ]
+            )
+        )
+        story.extend([Paragraph("Report Data", heading_style), data_table])
+    else:
+        empty_table = Table(
+            [[paragraph(OPERATIONS_EMPTY_MESSAGE, empty_style)]],
+            colWidths=[content_width],
+        )
+        empty_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), accent_lighter),
+                    ("BOX", (0, 0), (-1, -1), 0.4, border),
+                    ("TOPPADDING", (0, 0), (-1, -1), 9),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+                ]
+            )
+        )
+        story.append(
+            KeepTogether([Paragraph("Report Data", heading_style), empty_table])
+        )
+
+    def page_frame(canvas, document):
+        canvas.saveState()
+        canvas.setFont(font_name, 7)
+        canvas.setFillColor(muted)
+        canvas.drawString(margin, page_height - (8 * mm), "SFLMS | Operations Report")
+        canvas.drawRightString(
+            page_width - margin,
+            page_height - (8 * mm),
+            visual_text(title),
+        )
+        canvas.setStrokeColor(border)
+        canvas.setLineWidth(0.5)
+        canvas.line(margin, page_height - (10 * mm), page_width - margin, page_height - (10 * mm))
+        canvas.line(margin, 9 * mm, page_width - margin, 9 * mm)
+        canvas.drawString(
+            margin,
+            5.5 * mm,
+            f"Generated {_operations_display_value(metadata['generated_at'])}",
+        )
+        canvas.drawRightString(page_width - margin, 5.5 * mm, f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    output = io.BytesIO()
+    document = SimpleDocTemplate(
+        output,
+        pagesize=page_size,
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=16 * mm,
+        bottomMargin=14 * mm,
+        title=title,
+        author="SFLMS",
+    )
+    document.build(story, onFirstPage=page_frame, onLaterPages=page_frame)
     return output.getvalue()
 
 
@@ -401,6 +1289,466 @@ def _render_xlsx(columns, rows):
     return output.getvalue()
 
 
+def _construction_xlsx_cell(reference, value, *, key=None, style=None):
+    if style is not None:
+        style_id = style
+    elif isinstance(value, datetime):
+        style_id = 6
+    elif isinstance(value, date):
+        style_id = 5
+    elif key and (
+        "progress" in key or "percentage" in key or "health_score" in key
+    ) and isinstance(
+        value, (int, float, Decimal)
+    ):
+        style_id = 7
+    elif isinstance(value, int) and not isinstance(value, bool):
+        style_id = 8
+    elif isinstance(value, (float, Decimal)):
+        style_id = 9
+    else:
+        style_id = 4
+
+    if value is None or value == "":
+        value = "—"
+    if isinstance(value, datetime):
+        moment = value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+        serial = (moment - datetime(1899, 12, 30)).total_seconds() / 86400
+        return f'<c r="{reference}" s="{style_id}" t="n"><v>{serial}</v></c>'
+    if isinstance(value, date):
+        serial = (value - date(1899, 12, 30)).days
+        return f'<c r="{reference}" s="{style_id}" t="n"><v>{serial}</v></c>'
+    if style is None and style_id == 7:
+        return f'<c r="{reference}" s="{style_id}" t="n"><v>{float(value) / 100}</v></c>'
+    if isinstance(value, bool):
+        value = "Yes" if value else "No"
+    if isinstance(value, (int, float, Decimal)) and style_id in {8, 9}:
+        return f'<c r="{reference}" s="{style_id}" t="n"><v>{value}</v></c>'
+    normalized = _normalize_cell(value)
+    return (
+        f'<c r="{reference}" s="{style_id}" t="inlineStr">'
+        f'<is><t xml:space="preserve">{escape(str(normalized))}</t></is></c>'
+    )
+
+
+def _construction_xlsx_width(key, label, rows):
+    longest = len(label)
+    for row in rows:
+        value = row.get(key)
+        if isinstance(value, datetime):
+            candidate = 19
+        elif isinstance(value, date):
+            candidate = 10
+        else:
+            candidate = max((len(line) for line in str(_normalize_cell(value)).splitlines()), default=0)
+        longest = max(longest, candidate)
+    wide_keys = {
+        "description",
+        "work_completed",
+        "notes",
+        "report_content",
+        "equipment_used",
+        "issues",
+        "reason",
+        "caption",
+    }
+    maximum = 42 if key in wide_keys or key == "value" else 32
+    return min(max(longest + 2, 12), maximum)
+
+
+def _worksheet_xml(
+    columns,
+    rows,
+    *,
+    sheet_title,
+    context,
+    empty_message=None,
+    summary=False,
+    adaptive_row_heights=False,
+):
+    last_column = _column_name(max(1, len(columns)))
+    last_row = 5 if not rows else 4 + len(rows)
+    rendered_rows = [
+        '<row r="1" ht="24" customHeight="1">'
+        + _construction_xlsx_cell("A1", sheet_title, style=1)
+        + "</row>",
+        '<row r="2" ht="20" customHeight="1">'
+        + _construction_xlsx_cell("A2", context, style=2)
+        + "</row>",
+    ]
+    header_cells = [
+        _construction_xlsx_cell(
+            f"{_column_name(column_number)}4",
+            label,
+            style=3,
+        )
+        for column_number, (_, label) in enumerate(columns, start=1)
+    ]
+    rendered_rows.append(
+        f'<row r="4" ht="26" customHeight="1">{"".join(header_cells)}</row>'
+    )
+    column_widths = [
+        _construction_xlsx_width(key, label, rows) for key, label in columns
+    ]
+    if rows:
+        for row_number, row in enumerate(rows, start=5):
+            cells = []
+            for column_number, (key, _) in enumerate(columns, start=1):
+                cell_style = 11 if summary and column_number == 1 else None
+                cells.append(
+                    _construction_xlsx_cell(
+                        f"{_column_name(column_number)}{row_number}",
+                        row.get(key),
+                        key=key,
+                        style=cell_style,
+                    )
+                )
+            row_height = 22
+            if adaptive_row_heights:
+                line_count = 1
+                for (key, _), width in zip(columns, column_widths):
+                    value = _operations_display_value(row.get(key), key)
+                    usable_width = max(8, int(width) - 2)
+                    wrapped_lines = sum(
+                        max(1, math.ceil(len(line) / usable_width))
+                        for line in str(value).splitlines() or [""]
+                    )
+                    line_count = max(line_count, wrapped_lines)
+                row_height = min(72, max(22, 14 * line_count + 6))
+            rendered_rows.append(
+                f'<row r="{row_number}" ht="{row_height}" customHeight="1">'
+                f'{"".join(cells)}</row>'
+            )
+    elif empty_message:
+        rendered_rows.append(
+            '<row r="5" ht="24" customHeight="1">'
+            + _construction_xlsx_cell("A5", empty_message, style=10)
+            + "</row>"
+        )
+
+    column_xml = "".join(
+        f'<col min="{index}" max="{index}" width="{width:.1f}" customWidth="1"/>'
+        for index, width in enumerate(column_widths, start=1)
+    )
+    merged_cells = [f'<mergeCell ref="A1:{last_column}1"/>', f'<mergeCell ref="A2:{last_column}2"/>']
+    if not rows and empty_message:
+        merged_cells.append(f'<mergeCell ref="A5:{last_column}5"/>')
+    filter_reference = f"A4:{last_column}{last_row}"
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<dimension ref="A1:{last_column}{last_row}"/>'
+        '<sheetViews><sheetView showGridLines="0" workbookViewId="0">'
+        '<pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>'
+        '<selection pane="bottomLeft" activeCell="A5" sqref="A5"/>'
+        '</sheetView></sheetViews>'
+        '<sheetFormatPr defaultRowHeight="18"/>'
+        f'<cols>{column_xml}</cols>'
+        f'<sheetData>{"".join(rendered_rows)}</sheetData>'
+        f'<autoFilter ref="{filter_reference}"/>'
+        f'<mergeCells count="{len(merged_cells)}">{"".join(merged_cells)}</mergeCells>'
+        '<pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>'
+        '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0" paperSize="9"/>'
+        '</worksheet>'
+    )
+
+
+def _construction_xlsx_styles():
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<numFmts count="5">'
+        '<numFmt numFmtId="164" formatCode="yyyy-mm-dd"/>'
+        '<numFmt numFmtId="165" formatCode="yyyy-mm-dd hh:mm"/>'
+        '<numFmt numFmtId="166" formatCode="0%"/>'
+        '<numFmt numFmtId="167" formatCode="#,##0"/>'
+        '<numFmt numFmtId="168" formatCode="#,##0.00"/>'
+        '</numFmts>'
+        '<fonts count="4">'
+        '<font><sz val="10"/><name val="Calibri"/><family val="2"/></font>'
+        '<font><b/><color rgb="FFFFFFFF"/><sz val="16"/><name val="Calibri"/></font>'
+        f'<font><color rgb="{_argb(REPORT_ACCENT_ON_DARK)}"/><sz val="10"/><name val="Calibri"/></font>'
+        '<font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Calibri"/></font>'
+        '</fonts>'
+        '<fills count="5">'
+        '<fill><patternFill patternType="none"/></fill>'
+        '<fill><patternFill patternType="gray125"/></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT_DARK)}"/><bgColor indexed="64"/></patternFill></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT)}"/><bgColor indexed="64"/></patternFill></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT_LIGHT)}"/><bgColor indexed="64"/></patternFill></fill>'
+        '</fills>'
+        '<borders count="2">'
+        '<border><left/><right/><top/><bottom/><diagonal/></border>'
+        f'<border><left style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></left>'
+        f'<right style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></right>'
+        f'<top style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></top>'
+        f'<bottom style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></bottom><diagonal/></border>'
+        '</borders>'
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        '<cellXfs count="12">'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+        '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>'
+        '<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>'
+        '<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>'
+        '<xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top"/></xf>'
+        '<xf numFmtId="167" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top"/></xf>'
+        '<xf numFmtId="168" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>'
+        '</cellXfs>'
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+        '</styleSheet>'
+    )
+
+
+def _render_construction_xlsx(dataset):
+    summary_rows = []
+    for label, value in (
+        ("Report", dataset["title"]),
+        ("Project", dataset["project"]["name"]),
+        ("Description", dataset["project"]["description"]),
+        ("Location", dataset["project"]["location"]),
+        ("Facility Type", dataset["project"]["facility_type"]),
+        ("Project Status", dataset["project"]["status"]),
+        ("Start Date", dataset["project"]["start_date"]),
+        (
+            "Expected Completion",
+            dataset["project"]["expected_completion_date"],
+        ),
+        ("Actual Completion", dataset["project"]["actual_completion_date"]),
+        ("Overall Progress", dataset["project"]["overall_progress"]),
+        ("Period", dataset["metadata"]["period"]),
+        ("Date From", dataset["metadata"]["date_from"]),
+        ("Date To", dataset["metadata"]["date_to"]),
+        ("Generated At", dataset["metadata"]["generated_at"]),
+        ("Generated By", dataset["metadata"]["generated_by"]),
+        ("Phases", dataset["summary"]["phase_count"]),
+        ("Progress Entries", dataset["summary"]["progress_count"]),
+        ("Daily Reports", dataset["summary"]["daily_report_count"]),
+        ("Materials", dataset["summary"]["material_count"]),
+        (
+            "Open Material Requests",
+            dataset["summary"]["open_material_request_count"],
+        ),
+        ("Failed Inspections", dataset["summary"]["failed_inspection_count"]),
+        ("Documents", dataset["summary"]["document_count"]),
+        ("Photos", dataset["summary"]["photo_count"]),
+    ):
+        summary_rows.append({"field": label, "value": value})
+
+    sheets = [
+        (
+            "Summary",
+            (("field", "Field"), ("value", "Value")),
+            summary_rows,
+            None,
+        )
+    ]
+    sheets.extend(
+        (
+            section["sheet_name"],
+            section["columns"],
+            section["rows"],
+            CONSTRUCTION_EMPTY_MESSAGE,
+        )
+        for section in dataset["sections"]
+    )
+    context = (
+        f"Project: {dataset['project']['name']} | "
+        f"Period: {dataset['metadata']['period']}"
+    )
+
+    content_types = [
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+        '<Override PartName="/xl/styles.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>',
+    ]
+    workbook_sheets = []
+    workbook_relationships = []
+    for index, (name, _, _, _) in enumerate(sheets, start=1):
+        content_types.append(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        )
+        workbook_sheets.append(
+            f'<sheet name="{escape(name)}" sheetId="{index}" r:id="rId{index}"/>'
+        )
+        workbook_relationships.append(
+            f'<Relationship Id="rId{index}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            f'Target="worksheets/sheet{index}.xml"/>'
+        )
+    workbook_relationships.append(
+        '<Relationship Id="rId10" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+        'Target="styles.xml"/>'
+    )
+
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            f'{"".join(content_types)}</Types>',
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>',
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<bookViews><workbookView activeTab="0"/></bookViews>'
+            f'<sheets>{"".join(workbook_sheets)}</sheets></workbook>',
+        )
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'{"".join(workbook_relationships)}</Relationships>',
+        )
+        archive.writestr("xl/styles.xml", _construction_xlsx_styles())
+        for index, (name, columns, rows, empty_message) in enumerate(sheets, start=1):
+            archive.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                _worksheet_xml(
+                    columns,
+                    rows,
+                    sheet_title=f"Construction Project Report - {name}",
+                    context=context,
+                    empty_message=empty_message,
+                    summary=name == "Summary",
+                ),
+            )
+    return output.getvalue()
+
+
+def _operations_xlsx_styles():
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<numFmts count="5">'
+        '<numFmt numFmtId="164" formatCode="yyyy-mm-dd"/>'
+        '<numFmt numFmtId="165" formatCode="yyyy-mm-dd hh:mm"/>'
+        '<numFmt numFmtId="166" formatCode="0%"/>'
+        '<numFmt numFmtId="167" formatCode="#,##0"/>'
+        '<numFmt numFmtId="168" formatCode="#,##0.00"/>'
+        '</numFmts>'
+        '<fonts count="4">'
+        '<font><sz val="10"/><name val="Calibri"/><family val="2"/></font>'
+        '<font><b/><color rgb="FFFFFFFF"/><sz val="16"/><name val="Calibri"/></font>'
+        f'<font><color rgb="{_argb(REPORT_ACCENT_LIGHT)}"/><sz val="10"/><name val="Calibri"/></font>'
+        '<font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Calibri"/></font>'
+        '</fonts>'
+        '<fills count="5">'
+        '<fill><patternFill patternType="none"/></fill>'
+        '<fill><patternFill patternType="gray125"/></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT_DARK)}"/><bgColor indexed="64"/></patternFill></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT)}"/><bgColor indexed="64"/></patternFill></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT_LIGHT)}"/><bgColor indexed="64"/></patternFill></fill>'
+        '</fills>'
+        '<borders count="2">'
+        '<border><left/><right/><top/><bottom/><diagonal/></border>'
+        f'<border><left style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></left>'
+        f'<right style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></right>'
+        f'<top style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></top>'
+        f'<bottom style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></bottom><diagonal/></border>'
+        '</borders>'
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        '<cellXfs count="12">'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+        '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>'
+        '<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>'
+        '<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>'
+        '<xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top"/></xf>'
+        '<xf numFmtId="167" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top"/></xf>'
+        '<xf numFmtId="168" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'
+        '<xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>'
+        '</cellXfs>'
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+        '</styleSheet>'
+    )
+
+
+def _render_operations_xlsx(report, title, columns, rows):
+    metadata = _operations_report_metadata(report, title, len(rows))
+    labelled_columns = tuple(
+        (column, _operations_column_label(column, report.module)) for column in columns
+    )
+    context_parts = [
+        f"Period: {metadata['period']}",
+        f"Records: {metadata['row_count']}",
+        f"Facility filter: {metadata['facility']}",
+        f"Status filter: {metadata['status']}",
+        f"Generated by: {metadata['generated_by']}",
+    ]
+    worksheet = _worksheet_xml(
+        labelled_columns,
+        rows,
+        sheet_title=f"SFLMS - {title}",
+        context=" | ".join(context_parts),
+        empty_message=OPERATIONS_EMPTY_MESSAGE,
+        adaptive_row_heights=True,
+    )
+
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '</Types>',
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>',
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<bookViews><workbookView activeTab="0"/></bookViews>'
+            '<sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets>'
+            '</workbook>',
+        )
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            '</Relationships>',
+        )
+        archive.writestr("xl/styles.xml", _operations_xlsx_styles())
+        archive.writestr("xl/worksheets/sheet1.xml", worksheet)
+    return output.getvalue()
+
+
 def _template_configuration_for(report):
     configuration_snapshot = report.parameters.get("_template_configuration")
     if configuration_snapshot is not None:
@@ -430,6 +1778,332 @@ def _report_filters(report):
             {"parameters": "Unsupported report filters: " + ", ".join(sorted(unknown))}
         )
     return parameters
+
+
+def _construction_report_dates(parameters):
+    date_from_value = parameters.get("date_from")
+    date_to_value = parameters.get("date_to")
+    if bool(date_from_value) != bool(date_to_value):
+        raise ValidationError(
+            {"parameters": "Construction reports require both date_from and date_to."}
+        )
+    if not date_from_value:
+        return None, None
+    try:
+        date_from = date.fromisoformat(str(date_from_value))
+        date_to = date.fromisoformat(str(date_to_value))
+    except ValueError as exc:
+        raise ValidationError(
+            {"parameters": "Construction report dates must use YYYY-MM-DD."}
+        ) from exc
+    if date_from > date_to:
+        raise ValidationError(
+            {"parameters": "date_from cannot be later than date_to."}
+        )
+    return date_from, date_to
+
+
+def _construction_report_project(report, parameters):
+    from apps.projects.models import Project, ProjectAssignment
+    from apps.users.models import Role, User
+
+    project_id = parameters.get("project_id")
+    if not project_id:
+        raise ValidationError(
+            {"parameters": "Construction reports require an assigned project."}
+        )
+    try:
+        project = Project.objects.get(pk=project_id)
+    except (Project.DoesNotExist, ValueError) as exc:
+        raise ValidationError(
+            {"parameters": "The selected construction project is unavailable."}
+        ) from exc
+
+    actor = report.created_by
+    if (
+        not actor
+        or actor.status != User.STATUS_ACTIVE
+        or not actor.role_id
+    ):
+        raise ValidationError(
+            {"actor": "The report creator is no longer active."}
+        )
+    if actor.role.name == Role.SUPER_ADMIN:
+        return project
+    if actor.role.name != Role.CONSTRUCTION_MANAGER or not ProjectAssignment.objects.filter(
+        project=project,
+        user=actor,
+        is_active=True,
+    ).exists():
+        raise ValidationError(
+            {"actor": "The report creator is no longer assigned to this project."}
+        )
+    return project
+
+
+def _apply_construction_date_range(queryset, field, date_from, date_to):
+    if date_from is None:
+        return queryset
+    lookup_prefix = f"{field}__date" if field != "report_date" else field
+    return queryset.filter(
+        **{
+            f"{lookup_prefix}__gte": date_from,
+            f"{lookup_prefix}__lte": date_to,
+        }
+    )
+
+
+def build_construction_report_dataset(report, *, title=None, daily_columns=None):
+    """Build the frozen Construction Project Report v1 dataset."""
+    from apps.construction.models import DailyReport, QualityInspection, SitePhoto
+    from apps.materials.models import Material, MaterialRequest
+    from apps.projects.models import PhaseProgressLog, ProjectDocument, ProjectPhase
+    from apps.projects.services import calculate_project_progress
+
+    if report.module != Report.Module.CONSTRUCTION:
+        raise ValidationError({"module": "A construction report is required."})
+    parameters = _report_filters(report)
+    allowed_parameters = {"project_id", "date_from", "date_to", "period_label"}
+    unknown_parameters = set(parameters) - allowed_parameters
+    if unknown_parameters:
+        raise ValidationError(
+            {
+                "parameters": (
+                    "Unsupported construction report filters: "
+                    + ", ".join(sorted(unknown_parameters))
+                )
+            }
+        )
+    date_from, date_to = _construction_report_dates(parameters)
+    project = _construction_report_project(report, parameters)
+
+    phases = list(
+        ProjectPhase.objects.filter(project=project)
+        .select_related("approved_by")
+        .order_by("sequence_number", "id")
+    )
+    progress_logs = _apply_construction_date_range(
+        PhaseProgressLog.objects.filter(phase__project=project).select_related(
+            "phase", "created_by"
+        ),
+        "created_at",
+        date_from,
+        date_to,
+    ).order_by("created_at", "id")
+    daily_reports = _apply_construction_date_range(
+        DailyReport.objects.filter(project=project).select_related(
+            "phase", "created_by"
+        ),
+        "report_date",
+        date_from,
+        date_to,
+    ).order_by("report_date", "created_at", "id")
+    materials = Material.objects.filter(project=project).order_by("name", "id")
+    material_requests = (
+        MaterialRequest.objects.filter(project=project)
+        .select_related("material", "created_by")
+        .order_by("created_at", "id")
+    )
+    inspections = _apply_construction_date_range(
+        QualityInspection.objects.filter(project=project).select_related(
+            "phase", "inspector"
+        ),
+        "inspected_at",
+        date_from,
+        date_to,
+    ).order_by("inspected_at", "id")
+    documents = _apply_construction_date_range(
+        ProjectDocument.objects.filter(project=project).select_related("created_by"),
+        "created_at",
+        date_from,
+        date_to,
+    ).order_by("created_at", "id")
+    photos = _apply_construction_date_range(
+        SitePhoto.objects.filter(project=project).select_related("phase"),
+        "captured_at",
+        date_from,
+        date_to,
+    ).order_by("captured_at", "id")
+
+    section_rows = {
+        "phases": [
+            {
+                "sequence_number": phase.sequence_number,
+                "name": phase.name,
+                "priority": phase.get_priority_display(),
+                "status": phase.get_status_display(),
+                "start_date": phase.start_date,
+                "expected_completion_date": phase.expected_completion_date,
+                "actual_start_date": phase.actual_start_date,
+                "actual_completion_date": phase.actual_completion_date,
+                "current_progress": phase.current_progress,
+                "approval_status": "Approved" if phase.approved_by_id else "Not Approved",
+            }
+            for phase in phases
+        ],
+        "progress": [
+            {
+                "phase_name": log.phase.name,
+                "progress_percentage": log.progress_percentage,
+                "work_completed": log.work_completed,
+                "notes": log.notes,
+                "author_name": log.created_by.full_name,
+                "recorded_at": log.created_at,
+            }
+            for log in progress_logs
+        ],
+        "daily_reports": [
+            {
+                "project_id": str(item.project_id),
+                "phase_id": str(item.phase_id) if item.phase_id else "",
+                "report_date": item.report_date,
+                "phase_name": item.phase.name if item.phase_id else "",
+                "title": item.title,
+                "report_content": item.report_content,
+                "progress_percentage": item.progress_percentage,
+                "workers_count": item.workers_count,
+                "weather_condition": item.weather_condition,
+                "equipment_used": item.equipment_used,
+                "issues": item.issues,
+                "author_name": item.created_by.full_name,
+            }
+            for item in daily_reports
+        ],
+        "materials": [
+            {
+                "name": material.name,
+                "unit": material.get_unit_display(),
+                "quantity_required": material.quantity_required,
+                "quantity_used": material.quantity_used,
+                "quantity_remaining": material.quantity_remaining,
+                "min_stock_threshold": material.min_stock_threshold,
+                "low_stock": material.quantity_remaining
+                <= material.min_stock_threshold,
+            }
+            for material in materials
+        ],
+        "material_requests": [
+            {
+                "material_name": item.material.name,
+                "quantity_requested": item.quantity_requested,
+                "unit": item.material.get_unit_display(),
+                "reason": item.reason,
+                "priority": item.get_priority_display(),
+                "status": item.get_status_display(),
+                "requester_name": item.created_by.full_name,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+            }
+            for item in material_requests
+        ],
+        "quality": [
+            {
+                "phase_name": item.phase.name,
+                "title": item.title,
+                "inspector_name": item.inspector.full_name,
+                "score": item.score,
+                "result": item.get_result_display(),
+                "notes": item.notes,
+                "inspected_at": item.inspected_at,
+            }
+            for item in inspections
+        ],
+        "documents": [
+            {
+                "title": item.title,
+                "document_type": item.document_type,
+                "original_file_name": item.original_file_name,
+                "mime_type": item.mime_type,
+                "file_size": item.file_size,
+                "uploader_name": item.created_by.full_name,
+                "uploaded_at": item.created_at,
+            }
+            for item in documents
+        ],
+        "photos": [
+            {
+                "caption": item.caption,
+                "phase_name": item.phase.name if item.phase_id else "",
+                "original_file_name": item.original_file_name,
+                "mime_type": item.mime_type,
+                "file_size": item.file_size,
+                "captured_at": item.captured_at,
+            }
+            for item in photos
+        ],
+    }
+
+    definitions = []
+    for key, sheet_name, default_columns in CONSTRUCTION_REPORT_SECTIONS:
+        columns = default_columns
+        if key == "daily_reports" and daily_columns is not None:
+            columns = tuple(
+                (column, CONSTRUCTION_DAILY_COLUMN_LABELS[column])
+                for column in daily_columns
+            )
+        rows, _ = _validate_rows(
+            section_rows[key],
+            [column for column, _ in columns],
+        )
+        definitions.append(
+            {
+                "key": key,
+                "title": sheet_name,
+                "sheet_name": sheet_name,
+                "columns": columns,
+                "rows": rows,
+            }
+        )
+
+    open_request_statuses = {
+        MaterialRequest.Status.SUBMITTED,
+        MaterialRequest.Status.REVIEWED,
+        MaterialRequest.Status.APPROVED,
+    }
+    period = parameters.get("period_label") or (
+        f"{date_from.isoformat()} to {date_to.isoformat()}"
+        if date_from is not None
+        else "All available history"
+    )
+    return {
+        "title": title or "Construction Project Report",
+        "metadata": {
+            "period": period,
+            "date_from": date_from,
+            "date_to": date_to,
+            "generated_at": report.updated_at,
+            "generated_by": report.created_by.full_name,
+        },
+        "project": {
+            "id": str(project.pk),
+            "name": project.name,
+            "description": project.description,
+            "location": project.location,
+            "facility_type": project.get_facility_type_display(),
+            "status": project.get_status_display(),
+            "start_date": project.start_date,
+            "expected_completion_date": project.expected_completion_date,
+            "actual_completion_date": project.actual_completion_date,
+            "overall_progress": calculate_project_progress(project),
+        },
+        "summary": {
+            "phase_count": len(section_rows["phases"]),
+            "progress_count": len(section_rows["progress"]),
+            "daily_report_count": len(section_rows["daily_reports"]),
+            "material_count": len(section_rows["materials"]),
+            "material_request_count": len(section_rows["material_requests"]),
+            "open_material_request_count": sum(
+                item.status in open_request_statuses for item in material_requests
+            ),
+            "quality_count": len(section_rows["quality"]),
+            "failed_inspection_count": sum(
+                item.result == QualityInspection.Result.FAILED for item in inspections
+            ),
+            "document_count": len(section_rows["documents"]),
+            "photo_count": len(section_rows["photos"]),
+        },
+        "sections": definitions,
+    }
 
 
 def build_domain_report_rows(report):
@@ -506,9 +2180,9 @@ def build_domain_report_rows(report):
         if parameters.get("status"):
             queryset = queryset.filter(status=parameters["status"])
         if parameters.get("date_from"):
-            queryset = queryset.filter(reported_date__date__gte=parameters["date_from"])
+            queryset = queryset.filter(discovery_time__date__gte=parameters["date_from"])
         if parameters.get("date_to"):
-            queryset = queryset.filter(reported_date__date__lte=parameters["date_to"])
+            queryset = queryset.filter(discovery_time__date__lte=parameters["date_to"])
     elif report.module == Report.Module.OPERATIONAL_PERFORMANCE:
         from django.db.models import Avg, Count, Q
         from apps.facilities.models import Facility
@@ -642,6 +2316,20 @@ def fail_report_generation(*, report_id, error):
     return report
 
 
+@transaction.atomic
+def requeue_failed_report(*, report_id):
+    report = Report.all_objects.select_for_update().get(pk=report_id, is_active=True)
+    if report.status != Report.Status.FAILED:
+        raise ValidationError({"status": "Only a failed report can be requeued."})
+    parameters = dict(report.parameters)
+    parameters.pop("_generation_error", None)
+    report.parameters = _validate_json_object(parameters, "parameters")
+    report.status = Report.Status.QUEUED
+    report.full_clean()
+    report.save(update_fields=["parameters", "status", "updated_at"])
+    return report
+
+
 def generate_report(*, report_id):
     report = begin_report_generation(report_id=report_id)
     try:
@@ -661,15 +2349,43 @@ def generate_report(*, report_id):
                         )
                     }
                 )
-        domain_rows = build_domain_report_rows(report)
-        rows, columns = _validate_rows(domain_rows, configured_columns)
         title = configuration.get("title") or report.type
-        if report.format == Report.Format.PDF:
-            content = _render_pdf(title, columns, rows)
-            extension = ".pdf"
+        if report.module == Report.Module.CONSTRUCTION:
+            dataset = build_construction_report_dataset(
+                report,
+                title=title,
+                daily_columns=configured_columns,
+            )
+            if report.format == Report.Format.PDF:
+                content = _render_construction_pdf(dataset)
+                extension = ".pdf"
+            else:
+                content = _render_construction_xlsx(dataset)
+                extension = ".xlsx"
         else:
-            content = _render_xlsx(columns, rows)
-            extension = ".xlsx"
+            domain_rows = build_domain_report_rows(report)
+            rows, columns = _validate_rows(domain_rows, configured_columns)
+            # Every non-construction module renders through the same styled
+            # generator so projects, materials, security, users, alerts and
+            # response reports belong to the same report family as the
+            # Construction Manager report instead of falling back to an
+            # unstyled, latin-1 text dump.
+            if report.format == Report.Format.PDF:
+                content = _render_operations_pdf(
+                    report,
+                    title,
+                    columns,
+                    rows,
+                )
+                extension = ".pdf"
+            else:
+                content = _render_operations_xlsx(
+                    report,
+                    title,
+                    columns,
+                    rows,
+                )
+                extension = ".xlsx"
         return complete_report_generation(
             report_id=report.pk,
             content=content,

@@ -56,9 +56,9 @@ sflms/
     ├── facilities/                    # Minimal Facility bridge                  — [IMPLEMENTED]
     ├── assets/                        # Asset model/services                      — [IMPLEMENTED]
     ├── maintenance/                   # MaintenanceOrder and Fault               — [IMPLEMENTED]
-    ├── security/                      # SecurityAlert, Incident, IncidentAction   — [IMPLEMENTED]
+    ├── security/                      # Security domain + consumers/routing/realtime — [IMPLEMENTED]
     ├── ai_engine/                     # AIModel, CameraDetectionEvent, tasks.py — [PLACEHOLDER, Phase 6]
-    ├── notifications/                 # Notification, Channels consumers        — [PLACEHOLDER, Phase 7]
+    ├── notifications/                 # Durable recipient Notifications + Celery tasks — [IMPLEMENTED]
     ├── reports/                       # Report, templates, PDF/XLSX generation   — [IMPLEMENTED]
     ├── audit/                         # AuditLog, middleware/signals            — [PLACEHOLDER, Phase 9]
     └── attachments/                   # Protected Attachment system              — [IMPLEMENTED]
@@ -68,15 +68,15 @@ sflms/
 N/A.
 
 ## Technical Notes
-Every implemented app's internal layout matches
-`backend-architecture.md` §App structure exactly. Placeholder apps
-currently contain only `__init__.py` and a `README.md` stating their
-target phase — this is intentional (see ADR process for why apps are
-scaffolded before implementation is not itself an ADR, just a Phase 1
-convention documented in `implementation-phases.md`).
+The live security Channels components are `apps/security/consumers.py`,
+`apps/security/routing.py`, and `apps/security/realtime.py`. WebSocket JWT
+subprotocol authentication is in `apps/authentication/websocket.py`.
+`apps/notifications` owns durable recipient-specific storage and Celery jobs;
+it does not own a Channels consumer.
 
 ## Current Implementation
-Tree above reflects the repository after Phase 3 domain implementation.
+Tree above reflects the current implemented ownership boundaries relevant to
+the domain applications and realtime layer.
 
 ## Future Evolution
 This document must be updated in the same PR that adds/removes/renames a

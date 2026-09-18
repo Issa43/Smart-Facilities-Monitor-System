@@ -21,6 +21,7 @@ def notify_users(
     source=None,
     preference_field=None,
     system_setting_key=None,
+    deduplication_key=None,
 ):
     if system_setting_key and not setting_enabled(system_setting_key):
         return
@@ -39,9 +40,8 @@ def notify_users(
     source_id = source.pk if source is not None else None
 
     def persist():
-        Notification.objects.bulk_create(
-            [
-                Notification(
+        notifications = [
+            Notification(
                     recipient_id=recipient_id,
                     title=title,
                     body=body,
@@ -50,10 +50,31 @@ def notify_users(
                     href=href,
                     source_type=source_type,
                     source_id=source_id,
+                    deduplication_key=(
+                        f"{recipient_id}:{deduplication_key}"
+                        if deduplication_key
+                        else None
+                    ),
                 )
-                for recipient_id in recipient_ids
-            ]
-        )
+            for recipient_id in recipient_ids
+        ]
+        if deduplication_key:
+            for notification in notifications:
+                Notification.objects.get_or_create(
+                    deduplication_key=notification.deduplication_key,
+                    defaults={
+                        "recipient_id": notification.recipient_id,
+                        "title": notification.title,
+                        "body": notification.body,
+                        "category": notification.category,
+                        "tone": notification.tone,
+                        "href": notification.href,
+                        "source_type": notification.source_type,
+                        "source_id": notification.source_id,
+                    },
+                )
+        else:
+            Notification.objects.bulk_create(notifications)
 
     transaction.on_commit(persist)
 

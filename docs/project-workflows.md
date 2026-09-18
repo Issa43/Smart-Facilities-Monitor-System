@@ -39,6 +39,17 @@ Cross-endpoint, cross-model workflows. Individual endpoint contracts are
    still points to the original genesis Project, unchanged
 ```
 
+### Workflow 2A — Construction Material Request approval
+```
+1. An assigned Construction Manager creates a Material Request (Submitted)
+2. Super Admin globally retrieves and reviews the request
+3. Super Admin approves it (Reviewed -> Approved), or rejects it (Rejected)
+4. An Approved request may continue through the existing completion flow
+```
+Construction Managers, Operations Managers, and Security Officers cannot
+review, approve, or reject Construction Material Requests. Project assignment
+scoping still controls Construction Manager visibility; Super Admin is global.
+
 ### Workflow 3 — Maintenance request to resolution
 ```
 1. Fault reported (manually, or from Asset health monitoring) →
@@ -61,7 +72,9 @@ Cross-endpoint, cross-model workflows. Individual endpoint contracts are
 1. Camera streams frames → AI Engine produces CameraDetectionEvent(s)
 2. Deduplication/threshold logic creates a SecurityAlert (or attaches to
    an existing open one) — see ai-engine.md
-3. Notification pushed to assigned Security Officers (facility broadcast)
+3. Durable per-recipient Notifications are created for eligible assigned
+   Security Officers and active Super Admins; per-device FCM delivery is
+   queued after commit, while live dashboard delivery independently uses Channels
 4. Security Officer reviews the Alert:
    a. Genuine → POST /api/v1/security/alerts/{id}/convert-to-incident/
       → Incident created (Incident.alert = this Alert),
@@ -103,11 +116,12 @@ Project, phase, Operations, and Security actions documented in
 `api-specification.md`.
 
 Workflow 3's `WorkExecutionLog` and `MaintenanceChecklist` steps remain future
-scope and are not exposed by the current API. Workflow 4's Camera, AI, and
-notification-producing steps also remain deferred; the current Security API
-starts at alert review/manual Incident creation and implements the downstream
-response lifecycle. DailyReport and Materials APIs referenced in Workflow 1
-are likewise not part of the completed Phase 4 route set.
+scope and are not exposed by the current API. Workflow 4's external inference
+remains outside Django; final CameraEvent ingestion, SecurityAlert creation,
+durable Notification/FCM delivery, live Channels delivery, and downstream
+review/Incident response are implemented. Workflow 1's DailyReport, Material, MaterialRequest,
+QualityInspection, ProjectDocument, and SitePhoto records are exposed through
+the assignment-scoped `/api/v1/construction/` API.
 
 ## Future Evolution
 As each workflow is implemented, verify its actual code path against the

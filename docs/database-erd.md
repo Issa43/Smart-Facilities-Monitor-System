@@ -42,12 +42,15 @@ Asset (1) ──< Fault (M) ──< FaultTimeline (M)
 Facility (1) ──< Camera (M) ──< CameraRecording (M)
 Camera (1) ──< CameraDetectionEvent (M) ──> AIModel
 Camera (1) ──< VehicleRecognition (M)
-CameraDetectionEvent (0..1) ──> SecurityAlert (1)   [converted_to_alert]
+CameraEvent (0..1) ──> SecurityAlert (1)            [security_alert]
 Facility (1) ──< SecurityAlert (M)
 SecurityAlert (0..1) ──> Incident (1)               [alert FK]
 Incident (1) ──< IncidentAction (M)
 
-User (1) ──< Notification (M) ──> Facility (0..1)   [broadcast notifications]
+User (1) ──< Notification (M)                        [one row per recipient]
+User (1) ──< DeviceRegistration (M)                  [private FCM registrations]
+Notification (1) ──< PushDelivery (M)                [one per target device]
+DeviceRegistration (1) ──< PushDelivery (M)
 * (any BaseModel entity) ──< Attachment (M)          [entity_type + entity_id]
 User (1) ──< AuditLog (M)
 User (1) ──< Report (M)

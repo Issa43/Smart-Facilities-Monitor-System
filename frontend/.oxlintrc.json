@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  },
+  "overrides": [
+    {
+      "files": ["src/context/*.tsx"],
+      "rules": {
+        // A context file exporting both its Provider and its use* hook is the
+        // idiomatic React pattern. Splitting each into three files to satisfy
+        // Fast Refresh granularity costs more than the dev-time HMR it buys.
+        "react/only-export-components": "off"
+      }
+    }
+  ]
+}

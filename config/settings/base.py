@@ -69,6 +69,7 @@ LOCAL_APPS = [
     "apps.reports.apps.ReportsConfig",
     "apps.notifications.apps.NotificationsConfig",
     "apps.audit.apps.AuditConfig",
+    "apps.safety.apps.SafetyConfig",
 ]
 
 # --- Apps planned by the approved architecture, added incrementally per phase ---
@@ -82,6 +83,7 @@ AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.common.observability.OperationalMetricsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -223,6 +225,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": config("API_ANON_RATE", default="60/minute"),
         "user": config("API_USER_RATE", default="600/minute"),
+        "ai_ingestion": config("AI_INGESTION_RATE", default="1200/minute"),
         "password_reset": config("PASSWORD_RESET_RATE", default="5/minute"),
     },
     "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
@@ -256,6 +259,18 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "SWAGGER_UI_SETTINGS": {"persistAuthorization": True},
+    # Enum component names are assigned globally by field name. These entries
+    # keep the pre-existing Fault severity and Project status component names
+    # stable after the Safety API added other "severity"/"status" choice sets,
+    # and give the Safety alert choice sets explicit names.
+    "ENUM_NAME_OVERRIDES": {
+        "SeverityEnum": "apps.maintenance.models.Fault.Severity",
+        "ProjectReadStatusEnum": "apps.projects.models.Project.Status",
+        "SafetyAlertSeverityEnum": "api.v1.safety.serializers.SAFETY_SEVERITY_CHOICES",
+        "SafetyAlertStatusEnum": "apps.safety.models.ProjectSafetyAlert.Status",
+        "SafetyActionEnum": "apps.safety.models.ProjectSafetyAlert.Action",
+        "SafetyRecommendedActionEnum": "api.v1.safety.serializers.RECOMMENDED_ACTION_CHOICES",
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -263,6 +278,7 @@ SPECTACULAR_SETTINGS = {
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())
 CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = ["Content-Disposition", "Content-Length"]
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
 
 # Password reset delivery. Production must configure an SMTP backend and a
@@ -277,6 +293,8 @@ EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
+# Django forbids enabling both; local Mailpit uses plaintext SMTP with neither.
+EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 FRONTEND_PASSWORD_RESET_URL = config(
     "FRONTEND_PASSWORD_RESET_URL",
     default="http://localhost:5173/reset-password?uid={uid}&token={token}",
@@ -307,6 +325,10 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_TASK_DEFAULT_QUEUE = "default"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
+    "notify-project-completion-reminders-daily": {
+        "task": "notifications.notify_project_completion_reminders",
+        "schedule": 24 * 60 * 60,
+    },
     "notify-overdue-work-orders-daily": {
         "task": "notifications.notify_overdue_work_orders",
         "schedule": 24 * 60 * 60,
@@ -315,7 +337,89 @@ CELERY_BEAT_SCHEDULE = {
         "task": "notifications.notify_critical_security_alerts",
         "schedule": 60.0,
     },
+    "recover-queued-push-deliveries": {
+        "task": "notifications.recover_queued_push_deliveries",
+        "schedule": 60.0,
+    },
 }
+
+# Firebase Admin is initialized lazily by Celery. Missing credentials never
+# prevent Django or workers from starting, and never count as a successful send.
+FCM_ENABLED = config("FCM_ENABLED", default=False, cast=bool)
+FCM_PROJECT_ID = config("FCM_PROJECT_ID", default="")
+FCM_CREDENTIALS_PATH = config("FCM_CREDENTIALS_PATH", default="")
+
+# External safety alerting kill switch. Alert creation also requires the
+# ``safety.externalAlerts`` SystemSetting; both default to disabled.
+SAFETY_ALERTS_ENABLED = config("SAFETY_ALERTS_ENABLED", default=False, cast=bool)
+
+
+def _bounded_int_setting(name, default, minimum, maximum):
+    return max(minimum, min(maximum, config(name, default=default, cast=int)))
+
+
+# External hazard provider polling. Polls exit before any network call unless
+# both Safety kill switches are on. Endpoint URLs are still checked against a
+# fixed host allowlist in apps/safety/providers before every request.
+SAFETY_USGS_ENABLED = config("SAFETY_USGS_ENABLED", default=True, cast=bool)
+SAFETY_USGS_FEED_URL = config(
+    "SAFETY_USGS_FEED_URL",
+    default="https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson",
+)
+SAFETY_USGS_POLL_SECONDS = _bounded_int_setting("SAFETY_USGS_POLL_SECONDS", 300, 60, 3600)
+SAFETY_GDACS_ENABLED = config("SAFETY_GDACS_ENABLED", default=True, cast=bool)
+SAFETY_GDACS_EVENTS_URL = config(
+    "SAFETY_GDACS_EVENTS_URL",
+    default="https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP",
+)
+SAFETY_GDACS_POLL_SECONDS = _bounded_int_setting("SAFETY_GDACS_POLL_SECONDS", 900, 60, 3600)
+SAFETY_PROVIDER_TIMEOUT_SECONDS = _bounded_int_setting("SAFETY_PROVIDER_TIMEOUT_SECONDS", 10, 1, 30)
+SAFETY_PROVIDER_MAX_BYTES = _bounded_int_setting(
+    "SAFETY_PROVIDER_MAX_BYTES", 5 * 1024 * 1024, 64 * 1024, 20 * 1024 * 1024
+)
+SAFETY_PROVIDER_MAX_RETRIES = _bounded_int_setting("SAFETY_PROVIDER_MAX_RETRIES", 2, 0, 3)
+
+# Official Syrian MHEWS weather warnings (CAP 1.2). Disabled by default and
+# additionally gated by both Safety kill switches, so nothing is fetched until
+# an operator turns it on. The feed URL is fixed in code, not read from the
+# environment, so a token-free public endpoint cannot be redirected elsewhere;
+# the host allowlist in apps/safety/providers/mhews.py is checked regardless.
+SAFETY_WEATHER_ENABLED = config("SAFETY_WEATHER_ENABLED", default=False, cast=bool)
+SAFETY_MHEWS_FEED_URL = "https://climweb.med.gov.sy/api/cap/rss.xml"
+SAFETY_MHEWS_POLL_SECONDS = _bounded_int_setting("SAFETY_MHEWS_POLL_SECONDS", 900, 300, 3600)
+
+# Outbound-only Telegram delivery of human safety decisions. Disabled by
+# default: when off, nothing is queued, no row is written, and no network call
+# is made. The bot token is read from the environment and never logged, stored
+# in the database, or returned by any API. There is no inbound webhook.
+SAFETY_TELEGRAM_ENABLED = config("SAFETY_TELEGRAM_ENABLED", default=False, cast=bool)
+SAFETY_TELEGRAM_BOT_TOKEN = config("SAFETY_TELEGRAM_BOT_TOKEN", default="")
+SAFETY_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
+SAFETY_TELEGRAM_TIMEOUT_SECONDS = _bounded_int_setting("SAFETY_TELEGRAM_TIMEOUT_SECONDS", 10, 1, 30)
+SAFETY_TELEGRAM_MAX_RETRIES = _bounded_int_setting("SAFETY_TELEGRAM_MAX_RETRIES", 3, 0, 5)
+SAFETY_TELEGRAM_MAX_MESSAGE_CHARS = _bounded_int_setting(
+    "SAFETY_TELEGRAM_MAX_MESSAGE_CHARS", 3500, 500, 4096
+)
+
+CELERY_BEAT_SCHEDULE.update(
+    {
+        "safety-poll-usgs-earthquakes": {
+            "task": "safety.poll_usgs_earthquakes",
+            "schedule": float(SAFETY_USGS_POLL_SECONDS),
+            "options": {"expires": SAFETY_USGS_POLL_SECONDS},
+        },
+        "safety-poll-gdacs-events": {
+            "task": "safety.poll_gdacs_events",
+            "schedule": float(SAFETY_GDACS_POLL_SECONDS),
+            "options": {"expires": SAFETY_GDACS_POLL_SECONDS},
+        },
+        "safety-poll-mhews-warnings": {
+            "task": "safety.poll_mhews_warnings",
+            "schedule": float(SAFETY_MHEWS_POLL_SECONDS),
+            "options": {"expires": SAFETY_MHEWS_POLL_SECONDS},
+        },
+    }
+)
 
 CHANNEL_LAYERS = {
     "default": {
@@ -329,6 +433,7 @@ CHANNEL_LAYERS = {
 # ---------------------------------------------------------------------------
 LOG_LEVEL = config("LOG_LEVEL", default="INFO").upper()
 DJANGO_LOG_LEVEL = config("DJANGO_LOG_LEVEL", default=LOG_LEVEL).upper()
+LOG_FORMAT = config("LOG_FORMAT", default="json").lower()
 
 LOGGING = {
     "version": 1,
@@ -338,9 +443,13 @@ LOGGING = {
             "format": "[{asctime}] {levelname} {name}: {message}",
             "style": "{",
         },
+        "json": {"()": "apps.common.observability.JsonFormatter"},
     },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json" if LOG_FORMAT == "json" else "verbose",
+        },
     },
     "root": {"handlers": ["console"], "level": LOG_LEVEL},
     "loggers": {

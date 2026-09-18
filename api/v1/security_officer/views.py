@@ -2,6 +2,7 @@ import mimetypes
 from pathlib import PurePosixPath
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
@@ -135,12 +136,23 @@ class SecurityAlertViewSet(ScopedSecurityMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return SecurityAlert.objects.filter(
             facility__in=self.visible_facilities()
-        ).select_related("facility", "reviewed_by", "created_by")
+        ).select_related(
+            "facility",
+            "reviewed_by",
+            "created_by",
+            "camera_event__camera__facility",
+            "camera_event__roi",
+        )
 
     def _service_action(self, service, **kwargs):
         alert = self.get_object()
         try:
-            alert = service(alert_id=alert.id, actor=self.request.user, **kwargs)
+            alert = service(
+                alert_id=alert.id,
+                actor=self.request.user,
+                request=self.request,
+                **kwargs,
+            )
         except DjangoValidationError as exc:
             raise _domain_conflict(exc) from exc
         return Response(SecurityAlertReadSerializer(alert).data)
@@ -178,6 +190,7 @@ class SecurityAlertViewSet(ScopedSecurityMixin, viewsets.ReadOnlyModelViewSet):
             incident = convert_alert_to_incident(
                 alert_id=alert.id,
                 actor=request.user,
+                request=request,
                 **payload.validated_data,
             )
         except DjangoValidationError as exc:
@@ -190,11 +203,19 @@ class SecurityAlertViewSet(ScopedSecurityMixin, viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"], url_path="snapshot")
     def snapshot(self, request, pk=None):
         alert = self.get_object()
+        owner = alert
+        field_name = "snapshot_image"
+        if not alert.snapshot_image:
+            try:
+                owner = alert.camera_event
+                field_name = "snapshot_path"
+            except ObjectDoesNotExist:
+                pass
         try:
             protected_file = open_authorized_protected_file(
                 request.user,
-                alert,
-                "snapshot_image",
+                owner,
+                field_name,
             )
         except (
             ProtectedAttachmentNotFound,

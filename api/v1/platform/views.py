@@ -7,9 +7,36 @@ from rest_framework.response import Response
 from apps.audit.models import AuditLog
 from apps.common.models import SystemSetting
 from apps.common.permissions import IsSuperAdmin
-from apps.notifications.models import Notification, NotificationPreference
+from apps.notifications.models import DeviceRegistration, Notification, NotificationPreference
+from apps.notifications.push import disable_device
 
-from .serializers import AuditLogSerializer, NotificationPreferenceSerializer, NotificationSerializer, SystemSettingSerializer
+from .serializers import AuditLogSerializer, DeviceRegistrationSerializer, NotificationPreferenceSerializer, NotificationSerializer, SystemSettingSerializer
+
+
+class IsHumanNotificationDeviceUser(IsAuthenticated):
+    message = "Authenticated human access is required."
+
+    def has_permission(self, request, view):
+        return bool(
+            super().has_permission(request, view)
+            and request.user.is_active
+            and request.user.role_id
+        )
+
+
+class DeviceRegistrationViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsHumanNotificationDeviceUser]
+    serializer_class = DeviceRegistrationSerializer
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    ordering_fields = ["created_at", "last_seen_at", "platform"]
+
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return DeviceRegistration.all_objects.none()
+        return DeviceRegistration.all_objects.filter(user=self.request.user)
+
+    def perform_destroy(self, instance):
+        disable_device(instance)
 
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):

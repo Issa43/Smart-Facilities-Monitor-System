@@ -1,0 +1,38 @@
+services:
+  backend:
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+      SECURE_SSL_REDIRECT: "False"
+      DB_NAME: sflms_e2e
+      ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      CORS_ALLOWED_ORIGINS: http://localhost:4173,http://127.0.0.1:4173
+      CSRF_TRUSTED_ORIGINS: http://localhost:4173,http://127.0.0.1:4173
+      FRONTEND_PASSWORD_RESET_URL: "http://127.0.0.1:4173/reset-password?uid={uid}&token={token}"
+      RUN_MIGRATIONS: "1"
+      COLLECT_STATIC: "0"
+    ports:
+      - "18000:8000"
+    volumes:
+      - .:/app
+
+  postgres:
+    environment:
+      POSTGRES_DB: sflms_e2e
+
+  celery_worker:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DB_NAME: sflms_e2e
+      DEBUG: "True"
+    volumes:
+      - .:/app
+
+  celery_beat:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DB_NAME: sflms_e2e
+      DEBUG: "True"
+    volumes:
+      - .:/app

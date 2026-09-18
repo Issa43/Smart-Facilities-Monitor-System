@@ -119,9 +119,25 @@ class UserCreateSerializer(serializers.ModelSerializer):
 class UserUpdateSerializer(serializers.ModelSerializer):
     """Partial-update serializer - password changes go through a dedicated flow."""
 
+    role = serializers.PrimaryKeyRelatedField(
+        queryset=Role.objects.all(),
+        required=False,
+        allow_null=False,
+    )
+
     class Meta:
         model = User
         fields = ["full_name", "phone", "role", "profile_image", "status"]
+
+    def validate_role(self, value):
+        if (
+            self.instance
+            and self.instance.ai_ingestion_credentials.exists()
+        ):
+            raise serializers.ValidationError(
+                "Machine principals cannot be assigned a human role."
+            )
+        return value
 
 
 class UserSelfUpdateSerializer(serializers.ModelSerializer):

@@ -1,5 +1,12 @@
 # SFLMS Backend — Phase 1 Forward-Compatibility Audit
 
+> **HISTORICAL / SUPERSEDED FIELD NAMES:** This document preserves the names
+> assessed during the Phase 1 planning audit. In particular,
+> `Notification.user` below is superseded by the implemented required
+> `Notification.recipient` field with individual `read_at` state. Current
+> Notification and Batch 4 realtime contracts are defined in
+> `docs/notifications.md` and ADR-0010.
+
 Purpose: verify the Phase 1 foundation will absorb every later phase
 **without breaking changes** to what's already built. One real gap was
 found and fixed during this audit (§5). Everything else checks out.
@@ -71,7 +78,7 @@ it needs new *Assignment* tables, which are new apps, not changes to
 |---|---|
 | REST API | ✅ `DEFAULT_AUTHENTICATION_CLASSES = (JWTAuthentication,)` — every future viewset inherits this automatically, nothing to redo. |
 | Swagger | ✅ `drf-spectacular` auto-detects `rest_framework_simplejwt.authentication.JWTAuthentication` and renders the Bearer "Authorize" lock icon without extra config. Added `persistAuthorization: True` this round so the token survives page reloads while developers test (quality fix, not a breaking one — see §5). **Action for you:** once the server runs locally, open `/api/docs/` and confirm the lock icon appears — that's the one part of this claim I can't execute in this sandbox. |
-| WebSocket (Phase 7) | ✅ Compatible by design, **additively**: browsers can't send custom `Authorization` headers on a WebSocket handshake, so Phase 7 will pass the JWT as a query param (`/ws/notifications/?token=...`) and validate it in a small custom Channels middleware (`JWTAuthMiddleware`) using `rest_framework_simplejwt`'s `AccessToken` class — same `SIGNING_KEY`/`ALGORITHM` already configured in `SIMPLE_JWT`. This is a new file added in Phase 7, not a change to anything in Phase 1. |
+| WebSocket (Phase 7 / Batch 4) | ✅ Compatible by design, **additively**: `/ws/security/events/` receives the existing short-lived JWT through the WebSocket subprotocol (`sflms.jwt`, then token). Middleware validates it with Simple JWT and never accepts query-string tokens or AIKey credentials. The existing `SIGNING_KEY`/`ALGORITHM` and ASGI foundation remain unchanged. |
 
 **✅ No breaking change required for any of the three surfaces.**
 
@@ -86,7 +93,7 @@ it needs new *Assignment* tables, which are new apps, not changes to
 | drf-spectacular | ✅ fully configured | + `persistAuthorization` (non-breaking addition) |
 | Redis | ✅ `REDIS_URL` configured | unchanged |
 | Celery | ⚠️ **settings present, but `config/celery.py` — listed in the approved architecture's own `config/` tree — was missing.** | **Fixed:** created `config/celery.py` (standard Django+Celery bootstrap, currently inert — `autodiscover_tasks()` finds nothing until Phase 6 apps add a `tasks.py`) and wired it into `config/__init__.py` per Celery's documented integration pattern. |
-| Channels | ✅ `ASGI_APPLICATION` already points at `config/asgi.py`; the `channels` package itself will be added to `INSTALLED_APPS` in Phase 7 (already listed as a commented placeholder in `base.py`) | unchanged, additive by design |
+| Channels | ✅ `ASGI_APPLICATION` points at `config/asgi.py`; Channels, channels-redis, and Daphne are installed, with the Redis layer configured. Batch 4 replaces the empty router with the scoped security-event route. | additive routing/authentication only |
 
 This was the **one real gap** found in this audit — now closed. It was a
 missing-file gap, not a design flaw: nothing already written had to change,

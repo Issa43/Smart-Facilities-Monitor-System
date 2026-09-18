@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates libpq5 \
+    && apt-get install --no-install-recommends -y ca-certificates fonts-dejavu-core libpq5 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system sflms \
     && useradd --system --gid sflms --home-dir /app sflms

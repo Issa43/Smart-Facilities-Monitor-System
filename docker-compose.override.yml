@@ -1,3 +1,7 @@
+# Local development overlay. Compose applies this automatically for
+# `docker compose up`; the production stack is launched with an explicit
+# `-f docker-compose.yml -f docker-compose.production.yml` and therefore never
+# sees Mailpit or the SMTP settings below.
 services:
   backend:
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
@@ -5,6 +9,14 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.development
       DEBUG: "True"
       COLLECT_STATIC: "0"
+      # Deliver mail to the local Mailpit inbox instead of printing it to the
+      # container log. Mailpit accepts unauthenticated plaintext SMTP and never
+      # relays anything off this machine, so no credentials exist here.
+      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+      EMAIL_USE_TLS: "False"
+      EMAIL_USE_SSL: "False"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -12,6 +24,28 @@ services:
       - static_data:/app/staticfiles
       - media_data:/app/media
       - protected_media_data:/app/protected_media
+    depends_on:
+      mailpit:
+        condition: service_healthy
+
+  # Local mail sink: SMTP on 1025 inside the Docker network, web inbox on 8025.
+  mailpit:
+    image: axllent/mailpit:v1.31
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - sflms_internal
 
   postgres:
     ports:
@@ -25,15 +59,30 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.development
       DEBUG: "True"
+      # Background jobs that send mail land in the same local inbox rather than
+      # attempting a real SMTP connection.
+      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+      EMAIL_USE_TLS: "False"
+      EMAIL_USE_SSL: "False"
     volumes:
       - .:/app
       - media_data:/app/media
       - protected_media_data:/app/protected_media
+    depends_on:
+      mailpit:
+        condition: service_healthy
 
   celery_beat:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.development
       DEBUG: "True"
+      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+      EMAIL_USE_TLS: "False"
+      EMAIL_USE_SSL: "False"
     volumes:
       - .:/app
       - celery_beat_data:/var/lib/celery

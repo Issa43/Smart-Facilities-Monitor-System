@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from api.v1.exceptions import DomainConflict
 from apps.assets.models import Asset
 from apps.assets.services import transition_asset_status
+from apps.audit.services import record_audit
 from apps.facilities.models import Facility, FacilityAssignment
 from apps.maintenance.models import Fault, MaintenanceOrder
 from apps.maintenance.services import (
@@ -80,7 +81,7 @@ class FacilityViewSet(ScopedOperationsMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return self.visible_facilities().select_related(
             "created_from_project", "created_by"
-        ).prefetch_related(
+        ).annotate(asset_count=Count("assets", distinct=True)).prefetch_related(
             Prefetch(
                 "assignments",
                 queryset=FacilityAssignment.objects.filter(
@@ -130,9 +131,33 @@ class AssetViewSet(
         "transition_status": "asset.status",
         "default": "asset.manage",
     }
-    filterset_fields = ["facility", "current_status", "asset_type", "category"]
-    search_fields = ["name", "serial_number", "manufacturer", "model"]
-    ordering_fields = ["name", "health_score", "installation_date", "created_at"]
+    filterset_fields = [
+        "facility",
+        "current_status",
+        "asset_type",
+        "category",
+        "manufacturer",
+        "location_inside_facility",
+    ]
+    search_fields = [
+        "name",
+        "asset_type",
+        "category",
+        "serial_number",
+        "manufacturer",
+        "model",
+        "location_inside_facility",
+    ]
+    ordering_fields = [
+        "name",
+        "asset_type",
+        "category",
+        "manufacturer",
+        "health_score",
+        "installation_date",
+        "created_at",
+        "updated_at",
+    ]
     ordering = ["name"]
 
     def get_queryset(self):
@@ -145,12 +170,38 @@ class AssetViewSet(
             return AssetWriteSerializer
         return AssetReadSerializer
 
+    @staticmethod
+    def _audit_snapshot(asset):
+        return {
+            "name": asset.name,
+            "asset_type": asset.asset_type,
+            "category": asset.category,
+            "serial_number": asset.serial_number,
+            "manufacturer": asset.manufacturer,
+            "model": asset.model,
+            "location_inside_facility": asset.location_inside_facility,
+            "installation_date": asset.installation_date.isoformat(),
+            "operation_date": (
+                asset.operation_date.isoformat() if asset.operation_date else None
+            ),
+            "current_status": asset.current_status,
+            "facility_id": str(asset.facility_id),
+            "is_active": asset.is_active,
+        }
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
                 asset = serializer.save()
+                record_audit(
+                    actor=request.user,
+                    action="asset.created",
+                    entity=asset,
+                    after=self._audit_snapshot(asset),
+                    request=request,
+                )
         except IntegrityError as exc:
             raise DomainConflict("An asset with this identity already exists.") from exc
         return Response(AssetReadSerializer(asset).data, status=status.HTTP_201_CREATED)
@@ -158,11 +209,20 @@ class AssetViewSet(
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         asset = self.get_object()
+        before = self._audit_snapshot(asset)
         serializer = self.get_serializer(asset, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
                 asset = serializer.save()
+                record_audit(
+                    actor=request.user,
+                    action="asset.updated",
+                    entity=asset,
+                    before=before,
+                    after=self._audit_snapshot(asset),
+                    request=request,
+                )
         except IntegrityError as exc:
             raise DomainConflict("An asset with this identity already exists.") from exc
         return Response(AssetReadSerializer(asset).data)
@@ -171,8 +231,39 @@ class AssetViewSet(
         asset = self.get_object()
         if asset.maintenance_orders.exists() or asset.faults.exists():
             raise DomainConflict("Assets with operational history cannot be archived.")
-        asset.soft_delete()
+        before = self._audit_snapshot(asset)
+        with transaction.atomic():
+            asset.soft_delete()
+            record_audit(
+                actor=request.user,
+                action="asset.archived",
+                entity=asset,
+                before=before,
+                after=self._audit_snapshot(asset),
+                request=request,
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["get"], url_path="filter-options")
+    def filter_options(self, request):
+        """Return real, scoped filter values without inventing lookup tables."""
+        assets = self.get_queryset()
+
+        def distinct_values(field):
+            return list(
+                assets.exclude(**{field: ""})
+                .order_by(field)
+                .values_list(field, flat=True)
+                .distinct()
+            )
+
+        return Response(
+            {
+                "asset_types": distinct_values("asset_type"),
+                "categories": distinct_values("category"),
+                "manufacturers": distinct_values("manufacturer"),
+            }
+        )
 
     @action(detail=False, methods=["get"], url_path="monitoring")
     def monitoring(self, request):
@@ -194,6 +285,7 @@ class AssetViewSet(
     @action(detail=True, methods=["post"], url_path="transition-status")
     def transition_status(self, request, pk=None):
         asset = self.get_object()
+        before = self._audit_snapshot(asset)
         payload = AssetStatusInputSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         try:
@@ -203,6 +295,14 @@ class AssetViewSet(
             )
         except DjangoValidationError as exc:
             raise _domain_conflict(exc) from exc
+        record_audit(
+            actor=request.user,
+            action="asset.status_transitioned",
+            entity=asset,
+            before=before,
+            after=self._audit_snapshot(asset),
+            request=request,
+        )
         return Response(AssetReadSerializer(asset).data)
 
 

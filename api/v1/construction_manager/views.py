@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.http import FileResponse
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
@@ -10,9 +10,17 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from api.v1.exceptions import DomainConflict
+from apps.audit.services import record_audit
 from apps.construction.models import DailyReport, QualityInspection, SitePhoto
 from apps.materials.models import Material, MaterialConsumptionRecord, MaterialRequest
-from apps.materials.services import approve_material_request, consume_material, fulfill_material_request, reject_material_request, review_material_request
+from apps.materials.services import (
+    approve_material_request,
+    consume_material,
+    fulfill_material_request,
+    notify_material_request_reviewers,
+    reject_material_request,
+    review_material_request,
+)
 from apps.projects.models import Project, ProjectDocument, ProjectPhase
 from apps.projects.services import (
     approve_phase,
@@ -31,6 +39,7 @@ from .serializers import (
     PhaseProgressLogSerializer,
     PhaseReviewInputSerializer,
     PhaseReviewLogSerializer,
+    AssignedProjectUpdateSerializer,
     ProjectPhaseReadSerializer,
     ProjectPhaseWriteSerializer,
     ProjectReadSerializer,
@@ -52,6 +61,22 @@ def _domain_conflict(error):
     return DomainConflict(detail=details)
 
 
+def _input_validation(error):
+    details = getattr(error, "message_dict", None) or {
+        "non_field_errors": error.messages
+    }
+    return ValidationError(detail=details)
+
+
+def _full_clean_and_save(instance):
+    try:
+        instance.full_clean()
+        instance.save()
+    except DjangoValidationError as exc:
+        raise _input_validation(exc) from exc
+    return instance
+
+
 def projects_for_user(user):
     queryset = Project.objects.all()
     if not user or not user.is_authenticated or not getattr(user, "role_id", None):
@@ -61,8 +86,13 @@ def projects_for_user(user):
     return queryset.distinct()
 
 
-class ScopedProjectViewSet(viewsets.ReadOnlyModelViewSet):
+class ScopedProjectViewSet(
+    mixins.UpdateModelMixin,
+    viewsets.ReadOnlyModelViewSet,
+):
     permission_required = {
+        "update": "project.edit",
+        "partial_update": "project.edit",
         "complete": "project.close",
         "completion_check": "project.close",
         "default": "project.view",
@@ -74,7 +104,23 @@ class ScopedProjectViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ["name", "start_date", "expected_completion_date", "created_at", "updated_at"]
 
     def get_queryset(self):
-        return projects_for_user(self.request.user).select_related("facility", "created_by").prefetch_related("assignments", "phases")
+        return projects_for_user(self.request.user).select_related(
+            "facility", "created_by"
+        ).prefetch_related("assignments__user", "phases")
+
+    def get_serializer_class(self):
+        if self.action in {"update", "partial_update"}:
+            return AssignedProjectUpdateSerializer
+        return ProjectReadSerializer
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        project = self.get_object()
+        serializer = self.get_serializer(project, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            project = serializer.save()
+        return Response(ProjectReadSerializer(project).data)
 
     @action(detail=True, methods=["get"], url_path="image")
     def image(self, request, pk=None):
@@ -177,9 +223,21 @@ class MaterialViewSet(ProjectScopedModelViewSet):
 
     def perform_create(self, serializer):
         project = self.project_from_request(serializer)
-        material = Material(project=project, created_by=self.request.user, **serializer.validated_data)
-        material.full_clean(); material.save()
+        material = Material(
+            project=project,
+            created_by=self.request.user,
+            quantity_used=0,
+            **serializer.validated_data,
+        )
+        _full_clean_and_save(material)
         serializer.instance = material
+
+    def perform_destroy(self, instance):
+        if instance.consumption_records.exists() or instance.requests.exists():
+            raise DomainConflict(
+                "A material with request or consumption history cannot be deleted."
+            )
+        super().perform_destroy(instance)
 
     @action(detail=True, methods=["get", "post"], url_path="consumption")
     def consumption(self, request, pk=None):
@@ -231,25 +289,51 @@ class MaterialRequestViewSet(ProjectScopedModelViewSet):
         submitted_material = data.pop("material")
         material = get_object_or_404(Material.objects.filter(project=project), pk=submitted_material.pk)
         request_obj = MaterialRequest(project=project, material=material, created_by=self.request.user, **data)
-        request_obj.full_clean(); request_obj.save(); serializer.instance = request_obj
+        _full_clean_and_save(request_obj)
+        notify_material_request_reviewers(request_obj)
+        serializer.instance = request_obj
 
-    def _transition(self, service):
+    def _transition(self, service, *, audit_action=None, actor_required=False):
         obj = self.get_object()
         try:
-            if service is approve_material_request:
+            if actor_required:
                 obj = service(obj.pk, actor=self.request.user)
             else:
                 obj = service(obj.pk)
         except DjangoValidationError as exc:
             raise _domain_conflict(exc) from exc
+        if audit_action:
+            record_audit(
+                actor=self.request.user,
+                action=audit_action,
+                entity=obj,
+                before=None,
+                after={"status": obj.status},
+                request=self.request,
+            )
         return Response(self.get_serializer(obj).data)
 
     @action(detail=True, methods=["post"])
-    def review(self, request, pk=None): return self._transition(review_material_request)
+    def review(self, request, pk=None):
+        return self._transition(
+            review_material_request,
+            audit_action="material_request.reviewed",
+            actor_required=True,
+        )
     @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None): return self._transition(approve_material_request)
+    def approve(self, request, pk=None):
+        return self._transition(
+            approve_material_request,
+            audit_action="material_request.approved",
+            actor_required=True,
+        )
     @action(detail=True, methods=["post"])
-    def reject(self, request, pk=None): return self._transition(reject_material_request)
+    def reject(self, request, pk=None):
+        return self._transition(
+            reject_material_request,
+            audit_action="material_request.rejected",
+            actor_required=True,
+        )
     @action(detail=True, methods=["post"])
     def complete(self, request, pk=None): return self._transition(fulfill_material_request)
 
@@ -260,14 +344,28 @@ class DailyReportViewSet(ProjectScopedModelViewSet):
     filterset_fields = {"project": ["exact"], "phase": ["exact"], "report_date": ["exact", "gte", "lte"]}
     search_fields = ["title", "report_content", "issues"]
     ordering_fields = ["report_date", "progress_percentage", "created_at"]
+    ordering = ["-report_date", "-created_at"]
 
     def get_queryset(self):
-        return DailyReport.objects.filter(project__in=self.scoped_projects()).select_related("project", "phase", "created_by")
+        return (
+            DailyReport.objects.filter(project__in=self.scoped_projects())
+            .select_related("project", "phase", "created_by")
+            .annotate(
+                site_photo_count=Count(
+                    "project__site_photos",
+                    filter=Q(
+                        project__site_photos__captured_at__date=F("report_date")
+                    ),
+                    distinct=True,
+                )
+            )
+        )
 
     def perform_create(self, serializer):
         project = self.project_from_request(serializer)
         report = DailyReport(project=project, created_by=self.request.user, report_date=serializer.validated_data.pop("report_date", timezone.localdate()), **serializer.validated_data)
-        report.full_clean(); report.save(); serializer.instance = report
+        _full_clean_and_save(report)
+        serializer.instance = report
 
 
 class QualityInspectionViewSet(ProjectScopedModelViewSet):
@@ -283,7 +381,8 @@ class QualityInspectionViewSet(ProjectScopedModelViewSet):
     def perform_create(self, serializer):
         project = self.project_from_request(serializer)
         inspection = QualityInspection(project=project, inspector=self.request.user, created_by=self.request.user, inspected_at=serializer.validated_data.pop("inspected_at", timezone.now()), **serializer.validated_data)
-        inspection.full_clean(); inspection.save(); serializer.instance = inspection
+        _full_clean_and_save(inspection)
+        serializer.instance = inspection
 
 
 class ProjectDocumentViewSet(ProjectScopedModelViewSet):
@@ -300,7 +399,11 @@ class ProjectDocumentViewSet(ProjectScopedModelViewSet):
     def perform_create(self, serializer):
         project = self.project_from_request(serializer)
         document = ProjectDocument(project=project, created_by=self.request.user, **serializer.validated_data)
-        document.save(); serializer.instance = document
+        try:
+            document.save()
+        except DjangoValidationError as exc:
+            raise _input_validation(exc) from exc
+        serializer.instance = document
 
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
@@ -322,7 +425,11 @@ class SitePhotoViewSet(ProjectScopedModelViewSet):
     def perform_create(self, serializer):
         project = self.project_from_request(serializer)
         photo = SitePhoto(project=project, created_by=self.request.user, captured_at=serializer.validated_data.pop("captured_at", timezone.now()), **serializer.validated_data)
-        photo.save(); serializer.instance = photo
+        try:
+            photo.save()
+        except DjangoValidationError as exc:
+            raise _input_validation(exc) from exc
+        serializer.instance = photo
 
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):

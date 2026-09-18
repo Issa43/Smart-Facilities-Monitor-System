@@ -1,0 +1,223 @@
+/* ==========================================================================
+   Patterns shared by all four role dashboards.
+   Kept in one place so the four dashboards read as one product rather than
+   four separately-designed pages.
+   ========================================================================== */
+
+/* ---------- Live status pill beside a page title ---------- */
+.livePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--success-tint);
+  color: var(--success-dark);
+  font-size: 11.5px;
+  font-weight: var(--fw-bold);
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+}
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: soft-pulse 1.8s ease-in-out infinite;
+}
+.livePillCritical {
+  background: var(--critical-tint);
+  color: var(--critical-dark);
+}
+.livePillCritical .liveDot {
+  background: var(--critical);
+}
+
+/* ---------- Quick actions ---------- */
+.quickGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+}
+.quickAction {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition:
+    border-color var(--duration-base),
+    background var(--duration-base),
+    transform var(--duration-base);
+  text-align: start;
+}
+.quickAction:hover {
+  border-color: var(--primary);
+  background: var(--primary-tint-soft);
+  transform: translateY(-2px);
+}
+.quickIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--primary-tint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.quickLabel {
+  display: block;
+  font-size: 12.5px;
+  font-weight: var(--fw-bold);
+  line-height: 1.4;
+}
+.quickHint {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+@media (max-width: 560px) {
+  .quickGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Attention list (pending items needing action) ---------- */
+.attentionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.attentionRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: border-color var(--duration-base);
+  text-align: start;
+  width: 100%;
+}
+.attentionRow:hover {
+  border-color: var(--primary-mid);
+  background: var(--primary-tint-soft);
+}
+.attentionBar {
+  width: 3px;
+  align-self: stretch;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+.attentionTitle {
+  display: block;
+  font-size: 12.5px;
+  font-weight: var(--fw-bold);
+  line-height: 1.5;
+}
+.attentionMeta {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.attentionCount {
+  margin-inline-start: auto;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: var(--fw-extrabold);
+  flex-shrink: 0;
+}
+
+/* ---------- Facility / project status strip ---------- */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: var(--space-3);
+}
+.stripCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: var(--surface);
+  transition:
+    border-color var(--duration-base),
+    transform var(--duration-base);
+}
+.stripCard:hover {
+  border-color: var(--primary-mid);
+  transform: translateY(-2px);
+}
+.stripHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.stripName {
+  display: block;
+  font-size: 12.5px;
+  font-weight: var(--fw-bold);
+  line-height: 1.5;
+}
+.stripMeta {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.stripFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 9px;
+}
+
+/* ---------- Two-column chart row ---------- */
+.chartRow {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .chartRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Inline metric list inside a panel ---------- */
+.metricList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.metricRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.metricLabel {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+}
+.metricValue {
+  font-size: 13.5px;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Empty-ish helper text ---------- */
+.hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.8;
+}

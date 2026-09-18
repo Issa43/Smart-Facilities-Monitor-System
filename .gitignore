@@ -16,3 +16,8 @@ protected_media/
 .idea/
 .verification/
 .verification-schema.yml
+mobile-fcm-test/app/google-services.json
+mobile-fcm-test/local.properties
+mobile-fcm-test/.gradle/
+mobile-fcm-test/**/build/
+mobile-fcm-test/.idea/

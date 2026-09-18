@@ -8,6 +8,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from apps.attachments.models import Attachment
+from apps.audit.models import AuditLog
 from apps.facilities.models import Facility, FacilityAssignment
 from apps.security.models import Incident, SecurityAlert
 from apps.security.services import create_manual_incident
@@ -146,6 +147,28 @@ class TestSecurityOfficerAPI:
         )
         assert dismissal.status_code == status.HTTP_200_OK
         assert dismissal.data["status"] == SecurityAlert.Status.DISMISSED
+        semantic_actions = list(
+            AuditLog.objects.filter(
+                action__in={
+                    "security_alert.reviewed",
+                    "security_alert.dismissed",
+                    "security_alert.converted_to_incident",
+                }
+            )
+            .order_by("created_at")
+            .values_list("action", flat=True)
+        )
+        assert semantic_actions == [
+            "security_alert.reviewed",
+            "security_alert.converted_to_incident",
+            "security_alert.reviewed",
+            "security_alert.dismissed",
+        ]
+        for audit in AuditLog.objects.filter(action__in=semantic_actions):
+            serialized = f"{audit.before!r}{audit.after!r}".lower()
+            assert "snapshot" not in serialized
+            assert "token" not in serialized
+            assert "secret" not in serialized
 
     def test_manual_incident_actions_transfer_and_close(
         self,
@@ -200,6 +223,17 @@ class TestSecurityOfficerAPI:
         assert started.status_code == status.HTTP_200_OK
         assert started.data["status"] == Incident.Status.INVESTIGATION
 
+        note_response = api_client.post(
+            reverse(
+                "api_v1:security-incident-notes",
+                kwargs={"pk": incident_id},
+            ),
+            {"body": "Initial investigation note"},
+            format="json",
+        )
+        assert note_response.status_code == status.HTTP_201_CREATED
+        assert note_response.data["body"] == "Initial investigation note"
+
         action_response = api_client.post(
             reverse(
                 "api_v1:security-incident-actions",
@@ -209,6 +243,24 @@ class TestSecurityOfficerAPI:
             format="json",
         )
         assert action_response.status_code == status.HTTP_201_CREATED
+        assert action_response.data["completed_at"] is None
+        assert action_response.data["completed_by_id"] is None
+
+        action_completion_url = reverse(
+            "api_v1:security-incident-action-completion",
+            kwargs={"pk": incident_id, "action_id": action_response.data["id"]},
+        )
+        blocked_close = api_client.post(
+            reverse("api_v1:security-incident-close", kwargs={"pk": incident_id}),
+            {"final_report": "Incident cannot close with pending actions."},
+            format="json",
+        )
+        assert blocked_close.status_code == status.HTTP_409_CONFLICT
+        assert api_client.patch(
+            action_completion_url,
+            {"completed": True},
+            format="json",
+        ).status_code == status.HTTP_200_OK
 
         transferred = api_client.post(
             reverse(

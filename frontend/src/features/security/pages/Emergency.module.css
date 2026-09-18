@@ -1,0 +1,230 @@
+/* ==========================================================================
+   Emergency status panel + camera tiles.
+   ========================================================================== */
+
+.statusPanel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--success);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-7);
+  box-shadow: var(--shadow-sm);
+}
+
+.statusAlarm {
+  border-inline-start-color: var(--critical);
+  background: var(--critical-tint);
+}
+
+.statusTitle {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: var(--fw-extrabold);
+  margin-bottom: 6px;
+}
+
+.statusBody {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.9;
+  max-width: 72ch;
+}
+.statusAlarm .statusBody {
+  color: var(--critical-dark);
+}
+
+/* ---------- Pulsing status orb ---------- */
+.orbWrap {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--success);
+  z-index: 1;
+}
+.statusAlarm .orb {
+  background: var(--critical);
+}
+
+.orbRing {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--success);
+  animation: orb-pulse 2.4s ease-out infinite;
+}
+.statusAlarm .orbRing {
+  border-color: var(--critical);
+  animation-duration: 1.3s;
+}
+
+@keyframes orb-pulse {
+  0% {
+    transform: scale(0.45);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.facilityDot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-inline-end: 8px;
+}
+
+@media (max-width: 700px) {
+  .statusPanel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+}
+
+/* ==========================================================================
+   Camera tiles
+   ========================================================================== */
+
+.cameraGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
+  gap: var(--space-4);
+}
+
+.camera {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--duration-base),
+    box-shadow var(--duration-base);
+}
+.camera:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+/* The "feed" is a dark gradient with a scan sweep — clearly a placeholder,
+   not a fake video stream. */
+.feed {
+  position: relative;
+  height: 155px;
+  background: linear-gradient(160deg, #1e293b 0%, #0f2233 55%, #17334a 100%);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedOffline {
+  background: linear-gradient(160deg, #2b2f36 0%, #1c2026 100%);
+}
+
+.scan {
+  position: absolute;
+  inset-inline-start: -30%;
+  top: 0;
+  bottom: 0;
+  width: 60%;
+  background: linear-gradient(
+    90deg,
+    rgba(103, 232, 249, 0) 0%,
+    rgba(103, 232, 249, 0.09) 50%,
+    rgba(103, 232, 249, 0) 100%
+  );
+  animation: scan-sweep 4.5s linear infinite;
+}
+
+@keyframes scan-sweep {
+  0% {
+    transform: translateX(-60%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+.feedIcon {
+  color: rgba(255, 255, 255, 0.28);
+  z-index: 1;
+}
+
+.recBadge {
+  position: absolute;
+  top: 10px;
+  inset-inline-start: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  z-index: 2;
+}
+
+.recDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--critical);
+  animation: soft-pulse 1.4s ease-in-out infinite;
+}
+
+.offlineLabel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12.5px;
+  font-weight: var(--fw-bold);
+  z-index: 2;
+}
+
+.cameraBody {
+  padding: 14px 16px;
+}
+
+.cameraName {
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+  margin-bottom: 3px;
+}
+
+.cameraZone {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.cameraFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-faint);
+}

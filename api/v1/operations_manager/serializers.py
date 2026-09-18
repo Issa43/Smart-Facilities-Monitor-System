@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 
 from apps.assets.models import Asset
 from apps.facilities.models import Facility
@@ -24,6 +26,7 @@ class FacilityReadSerializer(serializers.ModelSerializer):
     created_from_project_id = serializers.UUIDField(read_only=True)
     created_by_id = serializers.UUIDField(read_only=True)
     operations_manager_id = serializers.SerializerMethodField()
+    asset_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Facility
@@ -36,11 +39,13 @@ class FacilityReadSerializer(serializers.ModelSerializer):
             "operation_start_date",
             "status",
             "operations_manager_id",
+            "asset_count",
             "created_by_id",
             "created_at",
             "updated_at",
         ]
 
+    @extend_schema_field(OpenApiTypes.UUID)
     def get_operations_manager_id(self, obj):
         assignments = getattr(obj, "active_operations_assignments", None)
         if assignments is None:
@@ -145,6 +150,7 @@ class AssetStatusInputSerializer(serializers.Serializer):
 class MaintenanceOrderReadSerializer(serializers.ModelSerializer):
     asset_id = serializers.UUIDField(read_only=True)
     asset_name = serializers.CharField(source="asset.name", read_only=True)
+    asset_type = serializers.CharField(source="asset.asset_type", read_only=True)
     facility_id = serializers.UUIDField(source="asset.facility_id", read_only=True)
     assigned_to_id = serializers.UUIDField(read_only=True)
     created_by_id = serializers.UUIDField(read_only=True)
@@ -158,6 +164,7 @@ class MaintenanceOrderReadSerializer(serializers.ModelSerializer):
             "reference",
             "asset_id",
             "asset_name",
+            "asset_type",
             "facility_id",
             "type",
             "priority",
@@ -194,16 +201,28 @@ class MaintenanceTaskSerializer(serializers.ModelSerializer):
 
 class MaintenanceOrderWriteSerializer(serializers.ModelSerializer):
     asset = serializers.PrimaryKeyRelatedField(queryset=Asset.objects.none())
+    asset_type = serializers.CharField(
+        max_length=100,
+        required=False,
+        write_only=True,
+        trim_whitespace=True,
+    )
     assigned_to = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(status=User.STATUS_ACTIVE),
         required=False,
         allow_null=True,
+    )
+    tasks = serializers.ListField(
+        child=serializers.CharField(max_length=255, allow_blank=False, trim_whitespace=True),
+        required=False,
+        write_only=True,
     )
 
     class Meta:
         model = MaintenanceOrder
         fields = [
             "asset",
+            "asset_type",
             "type",
             "priority",
             "description",
@@ -211,6 +230,7 @@ class MaintenanceOrderWriteSerializer(serializers.ModelSerializer):
             "assigned_to",
             "expected_execution_date",
             "execution_notes",
+            "tasks",
         ]
 
     def __init__(self, *args, **kwargs):
@@ -228,12 +248,22 @@ class MaintenanceOrderWriteSerializer(serializers.ModelSerializer):
             ).distinct()
 
     def validate(self, attrs):
+        submitted_asset_type = attrs.pop("asset_type", None)
+        if self.instance and "tasks" in attrs:
+            raise serializers.ValidationError(
+                {"tasks": "Task definitions cannot be replaced after order creation."}
+            )
         if self.instance and "asset" in attrs:
             if attrs["asset"].pk != self.instance.asset_id:
                 raise serializers.ValidationError(
                     {"asset": "A maintenance order's asset cannot be changed."}
                 )
         asset = attrs.get("asset", getattr(self.instance, "asset", None))
+        if submitted_asset_type is not None and asset:
+            if submitted_asset_type.casefold() != asset.asset_type.casefold():
+                raise serializers.ValidationError(
+                    {"asset_type": "The selected asset type does not match the selected asset."}
+                )
         assignee = attrs.get("assigned_to", getattr(self.instance, "assigned_to", None))
         if assignee and asset and not assignee.facility_assignments.filter(
             facility=asset.facility,
@@ -244,7 +274,9 @@ class MaintenanceOrderWriteSerializer(serializers.ModelSerializer):
             )
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
+        task_labels = validated_data.pop("tasks", [])
         if validated_data.get("assigned_to"):
             validated_data["status"] = MaintenanceOrder.Status.ASSIGNED
         order = MaintenanceOrder(
@@ -256,6 +288,17 @@ class MaintenanceOrderWriteSerializer(serializers.ModelSerializer):
         except DjangoValidationError as exc:
             _raise_drf_validation(exc)
         order.save()
+        MaintenanceTask.objects.bulk_create(
+            [
+                MaintenanceTask(
+                    order=order,
+                    sequence=sequence,
+                    label=label,
+                    created_by=self.context["request"].user,
+                )
+                for sequence, label in enumerate(task_labels, start=1)
+            ]
+        )
         if order.assigned_to:
             notify_user(
                 order.assigned_to,
@@ -323,6 +366,7 @@ class FaultReadSerializer(serializers.ModelSerializer):
         model = Fault
         fields = [
             "id",
+            "reference",
             "asset_id",
             "asset_name",
             "facility_id",

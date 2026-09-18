@@ -1,11 +1,12 @@
 from decimal import Decimal, InvalidOperation
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_users
 from apps.projects.models import ProjectAssignment
+from apps.users.models import Role, User
 
 from .models import Material, MaterialConsumptionRecord, MaterialRequest
 
@@ -23,6 +24,27 @@ REQUEST_TRANSITIONS = {
     MaterialRequest.Status.REJECTED: set(),
     MaterialRequest.Status.COMPLETED: set(),
 }
+
+
+def notify_material_request_reviewers(material_request):
+    """Notify the existing decision-makers for a newly submitted request."""
+    reviewers = User.objects.filter(
+        role__name=Role.SUPER_ADMIN,
+        status=User.STATUS_ACTIVE,
+    )
+    notify_users(
+        reviewers,
+        title="طلب توريد مواد جديد بانتظار اعتمادك",
+        body=(
+            f"طلب {material_request.material.name} لمشروع "
+            f"{material_request.project.name} جاهز للمراجعة."
+        ),
+        category=Notification.Category.MATERIAL,
+        tone=Notification.Tone.WARNING,
+        href="/admin/material-requests",
+        source=material_request,
+        deduplication_key=f"material-request:{material_request.pk}:submitted",
+    )
 
 
 def _as_material_quantity(value):
@@ -74,18 +96,29 @@ def _transition_request(request_id, target_status):
     return material_request
 
 
+def _require_super_admin_decision_actor(material_request, actor):
+    if actor is None or not getattr(actor, "pk", None):
+        raise ValidationError({"actor": "A decision-making user is required."})
+    if not actor.is_active:
+        raise ValidationError({"actor": "The decision-making user must be active."})
+    if not getattr(actor, "role_id", None) or actor.role.name != Role.SUPER_ADMIN:
+        raise PermissionDenied(
+            "Material request review, approval, and rejection are restricted to Super Admin."
+        )
+    return material_request
+
+
 @transaction.atomic
-def review_material_request(request_id):
+def review_material_request(request_id, *, actor):
+    material_request = _locked_request(request_id)
+    _require_super_admin_decision_actor(material_request, actor)
     return _transition_request(request_id, MaterialRequest.Status.REVIEWED)
 
 
 @transaction.atomic
 def approve_material_request(request_id, *, actor):
     material_request = _locked_request(request_id)
-    if actor is None or not getattr(actor, "pk", None):
-        raise ValidationError({"actor": "An approving user is required."})
-    if not actor.is_active:
-        raise ValidationError({"actor": "The approving user must be active."})
+    _require_super_admin_decision_actor(material_request, actor)
     if material_request.created_by_id == actor.pk:
         raise ValidationError({"actor": "A requester cannot approve their own request."})
     if material_request.status == MaterialRequest.Status.SUBMITTED:
@@ -94,7 +127,9 @@ def approve_material_request(request_id, *, actor):
 
 
 @transaction.atomic
-def reject_material_request(request_id):
+def reject_material_request(request_id, *, actor):
+    material_request = _locked_request(request_id)
+    _require_super_admin_decision_actor(material_request, actor)
     return _transition_request(request_id, MaterialRequest.Status.REJECTED)
 
 
@@ -123,6 +158,7 @@ def consume_material(*, material_id, quantity, actor, usage_date=None, phase=Non
             {"quantity": "Consumption cannot exceed the remaining quantity."}
         )
 
+    previous_remaining = material.quantity_remaining
     material.quantity_used += quantity
     material.quantity_remaining -= quantity
     material.full_clean()
@@ -140,7 +176,10 @@ def consume_material(*, material_id, quantity, actor, usage_date=None, phase=Non
         record.usage_date = usage_date
     record.full_clean()
     record.save()
-    if material.quantity_remaining <= material.min_stock_threshold:
+    if (
+        previous_remaining > material.min_stock_threshold
+        and material.quantity_remaining <= material.min_stock_threshold
+    ):
         managers = [
             assignment.user
             for assignment in ProjectAssignment.objects.filter(

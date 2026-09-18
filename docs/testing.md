@@ -12,6 +12,10 @@ the strategy that governs them.
 ## Architecture
 
 ### Test stack
+Backend uses pytest/pytest-django. The frontend uses Vitest, React Testing
+Library, user-event, Jest DOM, and JSDOM. Playwright supplies isolated browser
+and API E2E coverage.
+
 `pytest` + `pytest-django` (not Django's built-in `TestCase` runner —
 chosen for fixture composability and less boilerplate), `factory-boy`
 available for future complex object graphs (not yet needed at Phase 1's
@@ -47,6 +51,39 @@ New domain-specific fixtures (a sample `Project`, `Facility`...) are added
 to `conftest.py` once those apps exist, following the same naming
 convention (`<role>_user`, `sample_<model_lowercase>`).
 
+### Runtime isolation (fail-closed)
+
+A test run must never reach real infrastructure, whatever the shell or
+container exports. This is enforced, not assumed, after a run once inherited
+`DJANGO_SETTINGS_MODULE=config.settings.development` from its container and
+published Celery tasks to the development Redis broker.
+
+Two independent precedence rules caused that, and both are now closed:
+
+1. **pytest-django** ranks the `DJANGO_SETTINGS_MODULE` environment variable
+   *above* the `pytest.ini` value. `pytest.ini` therefore passes
+   `--ds=config.settings.test` through `addopts`, which is the
+   highest-precedence slot. An explicit `--ds` on the command line still wins,
+   which is intentional.
+2. **Celery** resolves `broker_url`, `broker_read_url`, `broker_write_url`, and
+   `result_backend` from `os.environ` *above* Django settings, so test settings
+   alone could not stop it. `conftest.py` neutralizes all four at import time,
+   before Django or Celery loads.
+
+`conftest.py` then refuses to start the session unless the settings module is
+`config.settings.test`, Celery is eager, and both the Django and the Celery
+broker are in-process. It also blocks every non-loopback socket, so Telegram,
+USGS, GDACS, FCM, Redis, and PostgreSQL are unreachable while the Django test
+client and any local helper server keep working.
+
+`tests/test_test_isolation.py` re-executes the original incident: it runs
+`tests/test_isolation_probe.py` in a subprocess with the development settings
+module exported and asserts the run is still isolated, and that stripping
+`addopts` aborts during configuration rather than publishing anything.
+
+Running the suite: `pytest` from the repo root. Development and production
+runtimes are untouched — they keep PostgreSQL, Redis, Celery, and Channels.
+
 ### Integration tests
 Multi-step workflows (`project-workflows.md`) get their own integration
 test exercising the full sequence end-to-end — e.g., a
@@ -81,12 +118,15 @@ N/A.
   environment — see `docker.md` §Developer Notes.
 
 ## Current Implementation
-`apps/users/tests/` (`test_models.py`, `test_api.py`) and
-`apps/authentication/tests/test_auth.py` fully implement this strategy for
-Phase 1's scope: model constraints, JWT login/refresh/logout including
-suspended-account rejection and blacklist-prevents-reuse, permission
-enforcement (non-Super-Admin denied on user management endpoints).
-`tests/test_infrastructure.py` implements Phase 2 infrastructure coverage.
+The 2026-08-25 full-system rehearsal gate collected 147 backend tests and all
+147 passed against a freshly created PostgreSQL test database. The frontend
+gate has 65 passing tests spanning API clients, adapters, forms/validation,
+permissions, protected routes, loading/error states, and actual components.
+Eleven Playwright workflows pass in real Chrome against the disposable
+`sflms-rehearsal` Compose project: the original RBAC/object-scope checks plus
+visible Super Admin, Construction, Operations, and Security lifecycle
+rehearsals. `seed_e2e` refuses non-E2E databases and requires an
+environment-supplied password; it never uses a real account.
 
 ## Future Evolution
 Every domain app adds `test_models.py`/`test_api.py` (and

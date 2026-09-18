@@ -1,5 +1,3 @@
-import mimetypes
-
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import FileResponse
 from rest_framework import mixins, status, viewsets
@@ -17,6 +15,7 @@ from apps.reports.models import Report, ReportTemplate
 from apps.reports.services import (
     create_report_request,
     create_report_template,
+    requeue_failed_report,
     update_report_template,
 )
 from apps.reports.tasks import generate_report_task
@@ -183,6 +182,19 @@ class ReportRequestViewSet(
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @action(detail=True, methods=["post"], url_path="retry")
+    def retry(self, request, pk=None):
+        report = self.get_object()
+        try:
+            report = requeue_failed_report(report_id=report.pk)
+        except DjangoValidationError as exc:
+            raise_drf_validation(exc)
+        generate_report_task.delay(str(report.pk))
+        return Response(
+            ReportRequestReadSerializer(report, context={"request": request}).data,
+            status=status.HTTP_202_ACCEPTED,
+        )
+
     @action(detail=True, methods=["get"], url_path="download")
     def download(self, request, pk=None):
         report = self.get_object()
@@ -200,7 +212,11 @@ class ReportRequestViewSet(
             raise PermissionDenied(str(exc)) from exc
         extension = ".pdf" if report.format == Report.Format.PDF else ".xlsx"
         filename = f"report-{report.id}{extension}"
-        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        content_type = (
+            "application/pdf"
+            if report.format == Report.Format.PDF
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
         return FileResponse(
             protected_file,
             as_attachment=True,

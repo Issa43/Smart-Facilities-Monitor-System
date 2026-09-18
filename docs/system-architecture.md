@@ -40,8 +40,8 @@ protocols between them. Does not cover code-level layering inside Django
                             ▼                          ▼                     ▼
                   ┌──────────────────┐      ┌──────────────────┐  ┌──────────────────┐
                   │  celery_worker     │      │  celery_beat       │  │  channels/asgi     │
-                  │  (YOLO inference,  │      │  (scheduled tasks: │  │  (WebSocket layer,  │
-                  │  reports, preds)   │      │  preventive maint, │  │ runs in `backend`  │
+                  │  (reports and      │      │  (scheduled tasks: │  │  (security-event    │
+                  │  domain tasks)     │      │  preventive maint, │  │ WebSocket layer in │
                   │                    │      │  material checks)  │  │  via Daphne)         │
                   └──────────────────┘      └──────────────────┘  └──────────────────┘
 ```
@@ -59,18 +59,20 @@ way to run any service outside its container — see ADR-0004.
    enqueues a Celery task via `redis` (broker) and returns immediately.
 4. `celery_worker` picks up the task, does the work, writes results back
    to `postgres` and/or `MEDIA_ROOT` (shared volume).
-5. If the event is real-time-worthy (Security Alert, Notification),
+5. If a committed CameraEvent or SecurityAlert is live-delivery-worthy,
    the process publishes to the Channels layer via `redis` (channel
    layer backend), which pushes to any connected WebSocket client.
 
 ### AI-specific data flow
 ```
-IP Camera (RTSP) → OpenCV frame capture (inside `celery_worker`)
-  → Celery task: YOLO inference
-  → CameraDetectionEvent (always written)
-  → confidence + deduplication check
-  → SecurityAlert (conditionally written)
-  → Notification (DB write + Channels broadcast)
+External AI service
+  → AIKey-authenticated REST final event
+  → CameraEvent (persisted)
+  → SecurityAlert (conditionally persisted)
+  → Channels/WebSocket live delivery (best-effort, after commit)
+
+Separately for durable/mobile delivery:
+SecurityAlert → Notification → Celery → FCM mobile push
 ```
 See `ai-engine.md` for full detail.
 
@@ -98,12 +100,12 @@ N/A — this document is purely technical; see `business-domain.md`.
 ## Current Implementation
 Phase 1 implements the authentication foundation. Phase 2 implements the
 Docker topology, Redis cache, Celery/Beat processes, Channels/ASGI foundation,
-and health/readiness checks. Domain workers and WebSocket consumers remain
-deferred to their owning phases.
+and health/readiness checks. Batch 4 adds the authenticated security-event
+WebSocket consumer without changing the external-AI boundary.
 
 ## Future Evolution
-Phase 6 adds AI tasks/queues and Phase 7 adds authenticated WebSocket consumers
-on top of the running Worker/Beat and Channels foundations.
+AI inference remains external. Batch 5 adds FCM delivery to the durable
+Notification/Celery path independently of the Channels live-event path.
 
 ## Important Decisions
 Docker-first (ADR-0004), Redis reused for three roles rather than three

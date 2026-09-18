@@ -16,12 +16,14 @@ from drf_spectacular.views import (
 )
 
 from apps.common.health import database_health, health, redis_health
+from apps.common.observability import metrics
 
 urlpatterns = [
     # ---- Infrastructure health ----
     path("health/", health, name="health"),
     path("health/db/", database_health, name="health-db"),
     path("health/redis/", redis_health, name="health-redis"),
+    path("metrics/", metrics, name="metrics"),
 
     path("admin/", admin.site.urls),
 

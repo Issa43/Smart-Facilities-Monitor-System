@@ -32,7 +32,15 @@ implemented — see Current Implementation):
 | `generate_material_prediction` | `materials` | `celery_beat`, daily | `default` | 2 retries, 60s backoff | Yes — recomputing a prediction for a Material simply creates a newer `MaterialPrediction` row |
 | `generate_asset_health_prediction` | `assets` | `celery_beat`, daily | `default` | 2 retries, 60s backoff | Yes — same reasoning as above |
 | `generate_report` | `reports` | User action (`POST /api/reports/generate/`) | `default` | 1 retry, then `Report.status="failed"` (no silent infinite retry on a user-triggered action) | No — re-running creates a second `Report` row by design (user can regenerate) |
-| `send_notification_broadcast` | `notifications` | Called synchronously-enqueued by any domain event (Alert created, Maintenance due...) | `default` | 3 retries, 5s backoff | Yes — re-delivering a WebSocket broadcast for an already-created `Notification` row is harmless (at-least-once delivery is acceptable here, not exactly-once) |
+| `notifications.notify_project_completion_reminders` | `notifications` | Celery Beat, daily | `default` | Up to 5 retries for transient infrastructure errors, exponential backoff with jitter | Yes — per-recipient milestone deduplication key |
+| `notifications.notify_overdue_work_orders` | `notifications` | Celery Beat, daily | `default` | Up to 5 retries for transient infrastructure errors, exponential backoff with jitter | Yes — per-recipient/order/day deduplication |
+| `notifications.notify_critical_security_alerts` | `notifications` | Celery Beat, every 60 seconds | `default` | Up to 5 retries for transient infrastructure errors, exponential backoff with jitter | Yes — per-recipient SecurityAlert deduplication key |
+| `notifications.deliver_push_notification` | `notifications` | Post-commit eligible SecurityAlert fan-out or recovery | `default` | Up to 5 transient FCM/network retries with bounded exponential backoff | One delivery row per Notification/device; terminal states are not resent |
+| `notifications.recover_queued_push_deliveries` | `notifications` | Celery Beat, every 60 seconds | `default` | Next beat retries broker publication; releases claims stale for 10 minutes | Yes — reuses the unique delivery row |
+| `safety.poll_usgs_earthquakes` | `safety` | Celery Beat, every `SAFETY_USGS_POLL_SECONDS` (default 300 s, message expires after one interval) | `default` | Up to `SAFETY_PROVIDER_MAX_RETRIES` (default 2, max 3) retries only for retryable network/timeout/5xx failures, 30–100 s backoff; malformed payloads, 4xx, and disabled states are not retried; HTTP 429 sets a cache backoff of up to 1 hour | Yes — `HazardEvent` unique per provider event id, `ProjectSafetyAlert` unique per project/event, notification deduplication keys; a cache lock skips overlapping polls; exits before any network call unless both alerting switches are on |
+| `safety.poll_gdacs_events` | `safety` | Celery Beat, every `SAFETY_GDACS_POLL_SECONDS` (default 900 s, message expires after one interval) | `default` | Same bounded policy as USGS, backoff 30–300 s | Yes — same guarantees; while USGS polling is enabled, GDACS earthquakes are skipped before ingestion (counted as deferred to USGS) so earthquakes are never duplicated |
+| `safety.poll_mhews_warnings` | `safety` | Celery Beat, every `SAFETY_MHEWS_POLL_SECONDS` (default 900 s, message expires after one interval) | `default` | Same bounded policy as USGS/GDACS | Yes — disabled by default behind `SAFETY_WEATHER_ENABLED` and exits before any request while off; CAP Updates resolve to the root Alert so a warning chain stays one `HazardEvent`; a cache lock skips overlapping polls |
+| `safety.deliver_telegram_message` | `safety` | Post-commit, only after a human records a decision on a safety alert (`decide_alert_action` → `actioned`). No Beat entry — nothing schedules it | `default` | Up to `SAFETY_TELEGRAM_MAX_RETRIES` (default 3, max 5) for `429`, `5xx`, timeout, and connection failures, with bounded backoff honoring `retry_after`; invalid token, invalid chat, and other `4xx` fail permanently | Yes — one delivery row per `(alert, recipient, event_key)`; terminal rows are never resent, and a claim stale for 10 minutes is reclaimed inside the task |
 | `check_maintenance_calendar` | `maintenance` | `celery_beat`, daily | `default` | 2 retries, 60s backoff | Yes — checking for due `MaintenanceCalendarEvent` rows and notifying is safely re-runnable |
 
 ### Naming convention
@@ -53,9 +61,15 @@ runs.
 `INSTALLED_APPS`; no manual task registration required.
 
 ## Current Implementation
-`config/celery.py` is wired, Docker Compose starts Worker and Beat, the
-side-effect-free infrastructure health task is implemented, and Reports uses
-an auto-discovered generation task. Other domain tasks are not implemented.
+`config/celery.py` is wired and Docker Compose starts Worker and Beat. The
+side-effect-free infrastructure health task, asynchronous report generation,
+and the three durable notification jobs listed above are implemented.
+
+Celery processes durable notification/reminder work and FCM/mobile delivery
+for eligible CameraEvent-originated SecurityAlerts. It does not publish the live security WebSocket
+stream. Committed CameraEvent/SecurityAlert live messages go directly through
+Channels and Redis to `/ws/security/events/`, independently of Notification
+persistence.
 
 ## Future Evolution
 - Whether `capture_camera_frame` is itself a recurring Celery Beat task
@@ -82,7 +96,7 @@ statement does not ship.
 `monitoring-observability.md`.
 
 ## Files Involved
-`config/celery.py`, every future `apps/<name>/tasks.py`.
+`config/celery.py` and implemented or future `apps/<name>/tasks.py` modules.
 
 ## Dependencies
 `system-architecture.md`, `coding-patterns.md`.

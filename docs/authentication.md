@@ -2,13 +2,34 @@
 
 ## Purpose
 The single source of truth for how identity is established and
-maintained across the API and (from Phase 7) WebSocket connections.
+maintained across the API and WebSocket connections.
 
 ## Scope
 JWT issuance, validation, refresh, revocation. Does not cover *authorization*
 (what an authenticated user may do) — see `permissions-rbac.md`.
 
 ## Architecture
+
+### External AI machine authentication
+
+External AI services do not use the human JWT login flow. They use the
+dedicated header `Authorization: AIKey <key_id>:<secret>`. The secret is stored
+only as a Django password hash and checked through Django's constant-time
+password-hasher verification.
+
+Each credential points to a roleless active User with an unusable password, so
+the existing human login serializer rejects it and it receives no human RBAC
+permissions. Active, unexpired, unrevoked credentials are further restricted
+to explicit active Camera scopes. Facility identity is always derived from the
+authorized Camera.
+
+Machine authentication is opt-in on `POST` and `PATCH` CameraEvent operations
+through the dedicated authentication, permission, camera-scope, and throttle
+classes; it is not added to the global human authentication configuration.
+CameraEvent `GET` operations continue to use human JWT and Security Officer
+facility scope. The same AIKey credential may read current Batch 3 AI
+configuration, but only for its active Camera scopes; configuration mutation
+continues to require a human Super Admin JWT. Deployment must provide TLS.
 
 ### Login flow
 ```
@@ -39,15 +60,22 @@ so the frontend can render role-based UI without an immediate follow-up
   and rejected — this is a deliberate explicit-revocation step, not
   reliance on natural expiry.
 
-### WebSocket authentication (Phase 7, specified not yet implemented)
-Browsers cannot attach custom headers to a WebSocket handshake, so the
-access token is passed as a query parameter:
-`wss://.../ws/notifications/?token=<access_token>`. A custom Channels
-middleware (`JWTAuthMiddleware`, to be added in
-`apps/notifications/middleware.py`) will decode it using the same
-`SIMPLE_JWT` `SIGNING_KEY`/`ALGORITHM` already configured, and attach the
-resolved `User` to the connection `scope` before the consumer runs — no
-change to token issuance itself.
+### WebSocket authentication
+
+Human dashboard clients offer two WebSocket subprotocol values: the literal
+`sflms.jwt` followed by the existing short-lived JWT access token. The server
+validates that token with Simple JWT and accepts `sflms.jwt`; it never echoes
+the token. Query-string tokens and AIKey machine credentials are not accepted.
+
+Conceptual browser handshake:
+
+```javascript
+new WebSocket("wss://example/ws/security/events/", ["sflms.jwt", accessToken])
+```
+
+Authentication is repeated on every reconnect. Token validity establishes
+identity only; the consumer independently enforces the current active-user,
+role, permission, and Facility-assignment rules before delivery.
 
 ## Business Rules
 - A suspended (`status=suspended`) or inactive (`status=inactive`) account
@@ -84,7 +112,7 @@ remain mounted for compatibility.
   email backend, out of Phase 1 scope) — `change_password` (requires
   knowing the old password) is the interim self-service path. See
   `known-limitations.md`.
-- WebSocket JWT middleware ships in Phase 7 — see above.
+- WebSocket JWT middleware is implemented as documented above.
 
 ## Important Decisions
 JWT with access+refresh over session-based auth — required for a fully

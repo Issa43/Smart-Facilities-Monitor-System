@@ -6,6 +6,36 @@ class UserManager(BaseUserManager):
 
     use_in_migrations = True
 
+    def get_by_natural_key(self, username):
+        """Resolve the login identifier without regard to letter case.
+
+        ``ModelBackend`` funnels every authentication attempt through here, and
+        the default implementation matches ``email`` exactly. Email local parts
+        are case-insensitive in practice, and every other place that resolves an
+        account from an address -- both password-reset paths -- already uses
+        ``iexact``. The mismatch was reachable: an account stored with any
+        uppercase letter could complete a password reset requested in lower
+        case and then be refused at login with the password it had just set,
+        which is indistinguishable from a wrong password.
+
+        This only decides *which* account an identifier names; the password is
+        still verified afterwards by the backend, unchanged.
+        """
+
+        lookup = f"{self.model.USERNAME_FIELD}__iexact"
+        try:
+            return self.get(**{lookup: username})
+        except self.model.MultipleObjectsReturned:
+            # `email` is unique but case-sensitively so, so addresses differing
+            # only in case can coexist. Never guess between them: honour an
+            # exact match if there is one, otherwise refuse.
+            try:
+                return self.get(**{self.model.USERNAME_FIELD: username})
+            except self.model.DoesNotExist:
+                raise self.model.DoesNotExist(
+                    "Multiple accounts share that email address."
+                ) from None
+
     def _create_user(self, email, username, full_name, password, **extra_fields):
         if not email:
             raise ValueError("Users must have an email address.")

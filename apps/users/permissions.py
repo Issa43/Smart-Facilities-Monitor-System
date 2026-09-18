@@ -1,4 +1,4 @@
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import BasePermission
 
 from apps.users.models import Role
 
@@ -11,6 +11,7 @@ PERMISSION_CATALOG = {
     "fault.manage", "alert.view", "incident.create", "incident.update",
     "incident.close", "incident.escalate", "report.generate", "report.all",
     "user.manage", "role.manage", "audit.view", "settings.manage",
+    "safety.view", "safety.manage", "safety.broadcast",
 }
 
 
@@ -40,8 +41,10 @@ class IsSuperAdminForWrite(BasePermission):
 
     def has_permission(self, request, view):
         user = request.user
-        if not (user and user.is_authenticated):
-            return False
-        if request.method in SAFE_METHODS:
-            return bool(user.role_id and user.is_active)
-        return bool(user.role_id and user.role.name == Role.SUPER_ADMIN)
+        return bool(
+            user
+            and user.is_authenticated
+            and user.role_id
+            and user.is_active
+            and user.role.name == Role.SUPER_ADMIN
+        )

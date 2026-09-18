@@ -72,6 +72,10 @@ def complete_maintenance_order(*, order_id, actual_completion_date):
         raise ValidationError(
             {"actual_completion_date": "A valid completion date is required."}
         )
+    if order.tasks.filter(completed_at__isnull=True).exists():
+        raise ValidationError(
+            {"tasks": "All maintenance tasks must be completed before the order."}
+        )
 
     order.actual_completion_date = actual_completion_date
     order.status = MaintenanceOrder.Status.COMPLETED
@@ -98,6 +102,13 @@ def close_maintenance_order(*, order_id):
     order.status = MaintenanceOrder.Status.CLOSED
     order.full_clean()
     order.save(update_fields=["status", "updated_at"])
+    if (
+        order.asset.last_maintenance_date is None
+        or order.actual_completion_date > order.asset.last_maintenance_date
+    ):
+        order.asset.last_maintenance_date = order.actual_completion_date
+        order.asset.full_clean()
+        order.asset.save(update_fields=["last_maintenance_date", "updated_at"])
     restore_asset_if_clear(asset_id=order.asset_id)
     return order
 

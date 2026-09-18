@@ -4,35 +4,37 @@
 Accepted
 
 ## Context
-Safety-critical events (fire, smoke, intrusion, critical faults) require
-real-time delivery to Security Officers and Operations Managers — a
+Safety-critical camera events require real-time delivery to Security Officers
+and Super Admins — a
 polling-only notification design was explicitly rejected as insufficient
 for these event types, though polling remains a valid fallback for
 offline/disconnected clients.
 
+Operations Managers remain outside the current realtime permission model.
+Their separate Incident transfer workflow does not grant Security Officer
+stream access or arbitrary security mutations.
+
 ## Decision
 Django Channels, with Redis as the channel layer backend (reusing the
 same Redis instance already used by Celery, see ADR-0009), provides
-WebSocket-based real-time push. Every notification is still persisted to
-the database first (see `notifications.md`) — the WebSocket broadcast is
-additive delivery, never the sole record of an event.
+WebSocket-based real-time delivery of committed CameraEvent and SecurityAlert
+domain updates. This best-effort live path is independent from the durable
+Notification/Celery/FCM path. The persisted CameraEvent or
+SecurityAlert remains authoritative even if no WebSocket client is connected.
 
 ## Consequences
 - Users connected via WebSocket receive events within the delivery
   latency of the Channels/Redis pub-sub mechanism, not a polling
   interval.
-- Requires a custom JWT-based Channels middleware (Phase 7,
-  `authentication.md` §WebSocket authentication) since browsers cannot
-  attach custom headers to a WebSocket handshake — token passed as a
-  query parameter instead.
+- Requires custom JWT-based Channels middleware. Browsers offer the literal
+  `sflms.jwt` and the short-lived access token as WebSocket subprotocol values;
+  the server validates the token and accepts only `sflms.jwt`. Query-string
+  tokens and AIKey machine credentials are rejected.
 - `ASGI_APPLICATION` and `config/asgi.py` exist from Phase 1 specifically
   so this integration requires no restructuring later (verified in
   `PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §4).
-- The per-recipient read-state question for facility-broadcast
-  notifications (fan-out rows vs. read-receipt table) remains open and
-  must be resolved before/during Phase 7 implementation (see
-  `notifications.md` §Future Evolution) — this ADR does not itself
-  resolve that question.
+- WebSocket clients use REST for initial state; the live channel provides no
+  replay or notification read-state semantics.
 
 ## Alternatives Considered
 - **Long-polling / short-interval polling only**: rejected — explicitly

@@ -64,6 +64,7 @@ class DailyReport(BaseModel):
     )
     equipment_used = models.JSONField(
         default=list,
+        blank=True,
         validators=[validate_equipment_used],
     )
     report_content = models.TextField()

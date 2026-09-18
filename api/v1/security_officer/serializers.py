@@ -1,6 +1,8 @@
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework.reverse import reverse
 
 from apps.attachments.models import Attachment
@@ -25,6 +27,12 @@ class SecurityAlertReadSerializer(serializers.ModelSerializer):
     created_by_id = serializers.UUIDField(read_only=True)
     snapshot_available = serializers.SerializerMethodField()
     snapshot_download_url = serializers.SerializerMethodField()
+    camera_event_id = serializers.SerializerMethodField()
+    event_type = serializers.SerializerMethodField()
+    camera_id = serializers.SerializerMethodField()
+    camera_code = serializers.SerializerMethodField()
+    roi_id = serializers.SerializerMethodField()
+    roi_identifier = serializers.SerializerMethodField()
 
     class Meta:
         model = SecurityAlert
@@ -37,6 +45,12 @@ class SecurityAlertReadSerializer(serializers.ModelSerializer):
             "severity_level",
             "source",
             "confidence_score",
+            "camera_event_id",
+            "event_type",
+            "camera_id",
+            "camera_code",
+            "roi_id",
+            "roi_identifier",
             "snapshot_available",
             "snapshot_download_url",
             "status",
@@ -49,16 +63,58 @@ class SecurityAlertReadSerializer(serializers.ModelSerializer):
         ]
 
     def get_snapshot_available(self, alert) -> bool:
-        return bool(alert.snapshot_image)
+        if alert.snapshot_image:
+            return True
+        try:
+            return bool(alert.camera_event.snapshot_path)
+        except ObjectDoesNotExist:
+            return False
 
     def get_snapshot_download_url(self, alert) -> str | None:
-        if not alert.snapshot_image:
+        if not self.get_snapshot_available(alert):
             return None
         return reverse(
             "api_v1:security-alert-snapshot",
             kwargs={"pk": alert.pk},
             request=self.context.get("request"),
         )
+
+    @staticmethod
+    def _event(alert):
+        try:
+            return alert.camera_event
+        except ObjectDoesNotExist:
+            return None
+
+    @extend_schema_field(OpenApiTypes.UUID)
+    def get_camera_event_id(self, alert):
+        event = self._event(alert)
+        return event.pk if event else None
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_event_type(self, alert):
+        event = self._event(alert)
+        return event.event_type if event else None
+
+    @extend_schema_field(OpenApiTypes.UUID)
+    def get_camera_id(self, alert):
+        event = self._event(alert)
+        return event.camera_id if event else None
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_camera_code(self, alert):
+        event = self._event(alert)
+        return event.camera.code if event else None
+
+    @extend_schema_field(OpenApiTypes.UUID)
+    def get_roi_id(self, alert):
+        event = self._event(alert)
+        return event.roi_id if event else None
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_roi_identifier(self, alert):
+        event = self._event(alert)
+        return event.roi.identifier if event and event.roi_id else None
 
 
 class AlertReviewInputSerializer(serializers.Serializer):

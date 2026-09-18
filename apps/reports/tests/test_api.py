@@ -1,8 +1,9 @@
 from io import BytesIO
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import pytest
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
@@ -203,7 +204,33 @@ class TestReportsAPI:
         assert report.parameters["_template_id"] == str(template.pk)
         assert "_template_configuration" in report.parameters
         assert "_template_id" not in response.data["parameters"]
+        assert response.data["file_size"] is None
         delay.assert_called_once_with(str(report.pk))
+
+    def test_completed_report_response_exposes_file_size(
+        self,
+        api_client,
+        role_construction_manager,
+    ):
+        owner = create_user(role=role_construction_manager, suffix="size-cm")
+        report = create_report(actor=owner)
+        report.status = Report.Status.COMPLETED
+        report.file_path.name = "reports/construction/sized.pdf"
+        report.save(update_fields=["status", "file_path", "updated_at"])
+        api_client.force_authenticate(user=owner)
+
+        with patch.object(
+            type(report.file_path),
+            "size",
+            new_callable=PropertyMock,
+            return_value=1517,
+        ):
+            response = api_client.get(
+                reverse("api_v1:report-request-detail", kwargs={"pk": report.pk})
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["file_size"] == 1517
 
     def test_invalid_parameters_and_reserved_lifecycle_fields_are_rejected(
         self,
@@ -233,6 +260,60 @@ class TestReportsAPI:
         )
         assert forged.status_code == status.HTTP_400_BAD_REQUEST
         assert Report.objects.count() == 0
+
+    def test_construction_request_validates_project_and_date_contract(
+        self,
+        api_client,
+        role_construction_manager,
+        super_admin_user,
+    ):
+        manager = create_user(role=role_construction_manager, suffix="contract-cm")
+        project = create_project_assignment(
+            actor=super_admin_user,
+            manager=manager,
+            suffix="contract",
+        )
+        api_client.force_authenticate(user=manager)
+        url = reverse("api_v1:report-request-list")
+        base = {
+            "type": "Construction Project Report",
+            "module": Report.Module.CONSTRUCTION,
+            "format": Report.Format.PDF,
+        }
+
+        for parameters in (
+            {},
+            {"project_id": str(project.pk), "date_from": "2026-01-01"},
+            {
+                "project_id": str(project.pk),
+                "date_from": "2026-02-01",
+                "date_to": "2026-01-01",
+            },
+            {"project_id": str(project.pk), "status": "in_progress"},
+        ):
+            response = api_client.post(
+                url,
+                {**base, "parameters": parameters},
+                format="json",
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        with patch("api.v1.reports.views.generate_report_task.delay") as delay:
+            accepted = api_client.post(
+                url,
+                {
+                    **base,
+                    "parameters": {
+                        "project_id": str(project.pk),
+                        "date_from": "2026-01-01",
+                        "date_to": "2026-01-31",
+                        "period_label": "January 2026",
+                    },
+                },
+                format="json",
+            )
+        assert accepted.status_code == status.HTTP_202_ACCEPTED
+        delay.assert_called_once()
 
     def test_report_requests_are_immutable_and_owner_scoped(
         self,
@@ -342,6 +423,7 @@ class TestReportsAPI:
         api_client.force_authenticate(user=inactive)
         assert api_client.get(url).status_code == status.HTTP_403_FORBIDDEN
 
+    @override_settings(CORS_ALLOWED_ORIGINS=["http://127.0.0.1:4173"])
     def test_completed_report_download_is_protected(
         self,
         api_client,
@@ -361,15 +443,53 @@ class TestReportsAPI:
             return_value=stream,
         ) as protected_open:
             response = api_client.get(
-                reverse("api_v1:report-request-download", kwargs={"pk": report.pk})
+                reverse("api_v1:report-request-download", kwargs={"pk": report.pk}),
+                HTTP_ORIGIN="http://127.0.0.1:4173",
             )
 
         assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "application/pdf"
+        assert response["Content-Length"] == str(len(b"%PDF-1.4 protected"))
         assert "attachment" in response["Content-Disposition"]
+        exposed_headers = {
+            header.strip().lower()
+            for header in response["Access-Control-Expose-Headers"].split(",")
+        }
+        assert {"content-disposition", "content-length"} <= exposed_headers
         assert "file_path" not in api_client.get(
             reverse("api_v1:report-request-detail", kwargs={"pk": report.pk})
         ).data
         protected_open.assert_called_once_with(owner, report, "file_path")
+
+    def test_completed_excel_download_uses_xlsx_content_type(
+        self,
+        api_client,
+        role_construction_manager,
+    ):
+        owner = create_user(role=role_construction_manager, suffix="xlsx-download-cm")
+        report = create_report(actor=owner)
+        report.format = Report.Format.EXCEL
+        report.status = Report.Status.COMPLETED
+        report.file_path.name = "reports/construction/protected.xlsx"
+        report.save(update_fields=["format", "status", "file_path", "updated_at"])
+        api_client.force_authenticate(user=owner)
+        stream = BytesIO(b"PK\x03\x04 protected")
+        stream.name = report.file_path.name
+
+        with patch(
+            "api.v1.reports.views.open_authorized_protected_file",
+            return_value=stream,
+        ):
+            response = api_client.get(
+                reverse("api_v1:report-request-download", kwargs={"pk": report.pk})
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        assert response["Content-Length"] == str(len(b"PK\x03\x04 protected"))
+        assert response["Content-Disposition"].endswith('.xlsx"')
 
     def test_incomplete_report_download_is_blocked(
         self,
@@ -385,3 +505,27 @@ class TestReportsAPI:
         )
         assert response.status_code == status.HTTP_409_CONFLICT
         assert response.data["error"]["code"] == status.HTTP_409_CONFLICT
+
+    def test_failed_report_retry_is_owner_scoped_and_requeues(
+        self,
+        api_client,
+        role_construction_manager,
+    ):
+        owner = create_user(role=role_construction_manager, suffix="retry-owner")
+        other = create_user(role=role_construction_manager, suffix="retry-other")
+        report = create_report(actor=owner)
+        report.status = Report.Status.FAILED
+        report.parameters = {**report.parameters, "_generation_error": "Temporary failure"}
+        report.save(update_fields=["status", "parameters", "updated_at"])
+        retry_url = reverse("api_v1:report-request-retry", kwargs={"pk": report.pk})
+
+        api_client.force_authenticate(user=other)
+        assert api_client.post(retry_url).status_code == status.HTTP_404_NOT_FOUND
+        api_client.force_authenticate(user=owner)
+        with patch("api.v1.reports.views.generate_report_task.delay") as delay:
+            retried = api_client.post(retry_url)
+
+        assert retried.status_code == status.HTTP_202_ACCEPTED
+        assert retried.data["status"] == Report.Status.QUEUED
+        assert retried.data["failure_details"] is None
+        delay.assert_called_once_with(str(report.pk))

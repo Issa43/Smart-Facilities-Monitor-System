@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema_serializer
 
 from apps.construction.models import DailyReport, QualityInspection, SitePhoto
 from apps.materials.models import Material, MaterialConsumptionRecord, MaterialRequest
-from apps.projects.models import PhaseProgressLog, PhaseReviewLog, ProjectDocument, ProjectPhase
+from apps.projects.models import PhaseProgressLog, PhaseReviewLog, Project, ProjectDocument, ProjectPhase
 from api.v1.super_admin.serializers import ProjectReadSerializer
 
 
@@ -15,6 +15,20 @@ def _raise_drf_validation(error):
         "non_field_errors": error.messages
     }
     raise serializers.ValidationError(details) from error
+
+
+class FullCleanUpdateMixin:
+    """Run domain validation before persisting ModelSerializer updates."""
+
+    def update(self, instance, validated_data):
+        for field_name, value in validated_data.items():
+            setattr(instance, field_name, value)
+        try:
+            instance.full_clean()
+        except DjangoValidationError as exc:
+            _raise_drf_validation(exc)
+        instance.save()
+        return instance
 
 
 class ProjectPhaseReadSerializer(serializers.ModelSerializer):
@@ -44,6 +58,38 @@ class ProjectPhaseReadSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class AssignedProjectUpdateSerializer(serializers.ModelSerializer):
+    """Editable project metadata for an assigned Construction Manager.
+
+    Assignment, facility linkage, status, and completion fields remain under
+    their dedicated administrative/lifecycle contracts.
+    """
+
+    class Meta:
+        model = Project
+        fields = [
+            "name",
+            "facility_type",
+            "description",
+            "location",
+            "latitude",
+            "longitude",
+            "image",
+            "start_date",
+            "expected_completion_date",
+        ]
+
+    def update(self, instance, validated_data):
+        for field_name, value in validated_data.items():
+            setattr(instance, field_name, value)
+        try:
+            instance.full_clean()
+        except DjangoValidationError as exc:
+            _raise_drf_validation(exc)
+        instance.save()
+        return instance
 
 
 class ProjectPhaseWriteSerializer(serializers.ModelSerializer):
@@ -127,39 +173,43 @@ class PhaseReviewLogSerializer(serializers.ModelSerializer):
 
 
 @extend_schema_serializer(component_name="ConstructionMaterial")
-class MaterialSerializer(serializers.ModelSerializer):
+class MaterialSerializer(FullCleanUpdateMixin, serializers.ModelSerializer):
     project_id = serializers.UUIDField(read_only=True)
     created_by_id = serializers.UUIDField(read_only=True)
 
     class Meta:
         model = Material
         fields = ["id", "project_id", "name", "unit", "quantity_required", "quantity_used", "quantity_remaining", "min_stock_threshold", "created_by_id", "created_at", "updated_at"]
-        read_only_fields = ["quantity_remaining"]
+        read_only_fields = ["quantity_used", "quantity_remaining"]
 
     def validate(self, attrs):
         required = attrs.get("quantity_required", getattr(self.instance, "quantity_required", 0))
-        used = attrs.get("quantity_used", getattr(self.instance, "quantity_used", 0))
+        used = getattr(self.instance, "quantity_used", Decimal("0.000"))
         attrs["quantity_remaining"] = required - used
         return attrs
 
 
-class MaterialRequestSerializer(serializers.ModelSerializer):
+class MaterialRequestSerializer(FullCleanUpdateMixin, serializers.ModelSerializer):
     project_id = serializers.UUIDField(read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True)
     material_name = serializers.CharField(source="material.name", read_only=True)
     unit = serializers.CharField(source="material.unit", read_only=True)
     requested_by_id = serializers.UUIDField(source="created_by_id", read_only=True)
+    requested_by_name = serializers.CharField(source="created_by.full_name", read_only=True)
 
     class Meta:
         model = MaterialRequest
-        fields = ["id", "project_id", "material", "material_name", "unit", "quantity_requested", "reason", "priority", "status", "requested_by_id", "created_at", "updated_at"]
+        fields = ["id", "project_id", "project_name", "material", "material_name", "unit", "quantity_requested", "reason", "priority", "status", "requested_by_id", "requested_by_name", "created_at", "updated_at"]
         read_only_fields = ["status"]
 
 
 class MaterialConsumptionSerializer(serializers.ModelSerializer):
+    created_by_id = serializers.UUIDField(read_only=True)
+
     class Meta:
         model = MaterialConsumptionRecord
-        fields = ["id", "material", "quantity_used", "usage_date", "phase", "created_by", "created_at"]
-        read_only_fields = ["id", "created_by", "created_at"]
+        fields = ["id", "material", "quantity_used", "usage_date", "phase", "created_by_id", "created_at"]
+        read_only_fields = fields
 
 
 class MaterialConsumptionInputSerializer(serializers.Serializer):
@@ -172,49 +222,58 @@ class MaterialConsumptionInputSerializer(serializers.Serializer):
     )
 
 
-class DailyReportSerializer(serializers.ModelSerializer):
+class DailyReportSerializer(FullCleanUpdateMixin, serializers.ModelSerializer):
     project_id = serializers.UUIDField(read_only=True)
     phase_id = serializers.UUIDField(read_only=True, allow_null=True)
     author_id = serializers.UUIDField(source="created_by_id", read_only=True)
+    author_name = serializers.CharField(source="created_by.full_name", read_only=True)
     summary = serializers.CharField(source="report_content")
     workforce_count = serializers.IntegerField(source="workers_count")
     photo_count = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyReport
-        fields = ["id", "project_id", "phase", "phase_id", "title", "summary", "progress_percentage", "workforce_count", "photo_count", "report_date", "weather_condition", "equipment_used", "issues", "author_id", "created_at", "updated_at"]
+        fields = ["id", "project_id", "phase", "phase_id", "title", "summary", "progress_percentage", "workforce_count", "photo_count", "report_date", "weather_condition", "equipment_used", "issues", "author_id", "author_name", "created_at", "updated_at"]
         extra_kwargs = {
             "phase": {"required": False, "allow_null": True, "write_only": True},
-            "weather_condition": {"required": False, "allow_blank": True, "default": ""},
+            "weather_condition": {"required": False, "allow_blank": False, "default": "Not recorded"},
             "equipment_used": {"required": False, "default": list},
             "issues": {"required": False, "allow_blank": True, "default": ""},
             "report_date": {"required": False},
         }
 
     def get_photo_count(self, obj) -> int:
+        annotated_count = getattr(obj, "site_photo_count", None)
+        if annotated_count is not None:
+            return annotated_count
         return SitePhoto.objects.filter(project=obj.project, captured_at__date=obj.report_date).count()
 
 
-class QualityInspectionSerializer(serializers.ModelSerializer):
+class QualityInspectionSerializer(FullCleanUpdateMixin, serializers.ModelSerializer):
     project_id = serializers.UUIDField(read_only=True)
     phase_id = serializers.UUIDField(read_only=True)
     inspector_id = serializers.UUIDField(read_only=True)
+    inspector_name = serializers.CharField(source="inspector.full_name", read_only=True)
 
     class Meta:
         model = QualityInspection
-        fields = ["id", "project_id", "phase", "phase_id", "title", "inspector_id", "score", "result", "notes", "inspected_at", "created_at", "updated_at"]
-        extra_kwargs = {"phase": {"write_only": True}}
+        fields = ["id", "project_id", "phase", "phase_id", "title", "inspector_id", "inspector_name", "score", "result", "notes", "inspected_at", "created_at", "updated_at"]
+        extra_kwargs = {
+            "phase": {"write_only": True},
+            "inspected_at": {"required": False},
+        }
 
 
 class ProjectDocumentSerializer(serializers.ModelSerializer):
     project_id = serializers.UUIDField(read_only=True)
     uploaded_by_id = serializers.UUIDField(source="created_by_id", read_only=True)
+    uploaded_by_name = serializers.CharField(source="created_by.full_name", read_only=True)
     uploaded_at = serializers.DateTimeField(source="created_at", read_only=True)
     download_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ProjectDocument
-        fields = ["id", "project_id", "title", "document_type", "file", "original_file_name", "mime_type", "file_size", "uploaded_by_id", "uploaded_at", "download_url"]
+        fields = ["id", "project_id", "title", "document_type", "file", "original_file_name", "mime_type", "file_size", "uploaded_by_id", "uploaded_by_name", "uploaded_at", "download_url"]
         extra_kwargs = {"file": {"write_only": True}, "original_file_name": {"read_only": True}, "mime_type": {"read_only": True}, "file_size": {"read_only": True}}
 
     def get_download_url(self, obj) -> str | None:

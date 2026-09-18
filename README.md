@@ -3,12 +3,13 @@
 Django/DRF backend for SFLMS. This is a backend-only, REST-only repository;
 the frontend is a separate project.
 
-Current implementation:
-- Phase 1 foundation: custom User, four fixed Roles, JWT, RBAC scaffolding,
-  Swagger/OpenAPI, common model/API utilities.
-- Phase 2 infrastructure: Docker Compose, PostgreSQL, Redis, Celery Worker/Beat,
-  Redis cache, Channels/ASGI foundation, health checks, persistent volumes.
-- Domain apps remain placeholders. No Phase 3 business logic is implemented.
+Current implementation includes JWT authentication, four-role RBAC and object
+scoping, project/construction/material workflows, facilities/assets/maintenance,
+security incidents and protected files, asynchronous PDF/XLSX reports,
+notifications, audit logs, analytics, Docker/Celery infrastructure, encrypted
+backup/restore tooling, metrics, and a separate React frontend. AI/Computer
+Vision remains an integration-ready foundation only; models and inference are
+deferred to a dedicated specialist.
 
 ## Official setup
 
@@ -34,14 +35,16 @@ The development backend is available at `http://localhost:8000`.
 | Liveness | `http://localhost:8000/health/` |
 | PostgreSQL readiness | `http://localhost:8000/health/db/` |
 | Redis readiness | `http://localhost:8000/health/redis/` |
+| Prometheus metrics | `http://localhost:8000/metrics/` |
 
 ## Common commands
 
 ```bash
 docker compose logs -f backend
 docker compose exec backend python manage.py makemigrations --check --dry-run
-docker compose exec backend pytest -v
+docker compose exec backend pytest --ds=config.settings.test --create-db -q
 docker compose exec celery_worker celery -A config inspect ping
+docker compose exec backend python manage.py monitor_health
 docker compose down
 ```
 

@@ -2,11 +2,25 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.audit.services import record_audit
 from apps.facilities.models import Facility
 from apps.notifications.models import Notification
-from apps.notifications.services import notify_user
+from apps.notifications.services import notify_user, notify_users
+from apps.users.models import Role, User
 
 from .models import Incident, IncidentAction, IncidentNote, SecurityAlert
+from .realtime import schedule_security_alert_updated_broadcast
+
+
+def _safe_alert_audit_state(alert):
+    return {
+        "status": alert.status,
+        "is_false_positive": alert.is_false_positive,
+        "reviewed_by_id": str(alert.reviewed_by_id) if alert.reviewed_by_id else None,
+        "incident_id": (
+            str(alert.incident.pk) if hasattr(alert, "incident") else None
+        ),
+    }
 
 
 def _require_active_actor(actor, field_name="actor"):
@@ -79,25 +93,33 @@ def _create_incident_record(
     )
     incident.full_clean()
     incident.save()
-    if assigned_to:
-        notify_user(
-            assigned_to,
-            title="Security incident assigned",
-            body=f"Incident {incident.incident_number} has been assigned to you.",
-            category=Notification.Category.SECURITY,
-            tone=(
-                Notification.Tone.CRITICAL
-                if incident.severity_level == Incident.Severity.CRITICAL
-                else Notification.Tone.WARNING
-            ),
-            href=f"/security/incidents/{incident.pk}",
-            source=incident,
+    recipients = list(
+        User.objects.filter(
+            role__name=Role.SUPER_ADMIN,
+            status=User.STATUS_ACTIVE,
         )
+    )
+    if assigned_to:
+        recipients.append(assigned_to)
+    notify_users(
+        recipients,
+        title="تم تسجيل حادث أمني جديد",
+        body=f"الحادث {incident.incident_number} في {incident.facility.name} يتطلب المتابعة.",
+        category=Notification.Category.SECURITY,
+        tone=(
+            Notification.Tone.CRITICAL
+            if incident.severity_level == Incident.Severity.CRITICAL
+            else Notification.Tone.WARNING
+        ),
+        href=f"/security/incidents/{incident.pk}",
+        source=incident,
+        deduplication_key=f"security-incident:{incident.pk}:created",
+    )
     return incident
 
 
 @transaction.atomic
-def review_security_alert(*, alert_id, actor, notes=""):
+def review_security_alert(*, alert_id, actor, notes="", request=None):
     _require_active_actor(actor)
     alert = _locked_alert(alert_id)
     if alert.status != SecurityAlert.Status.NEW:
@@ -107,6 +129,7 @@ def review_security_alert(*, alert_id, actor, notes=""):
     if not alert.facility.is_active:
         raise ValidationError({"facility": "The alert facility must be active."})
 
+    before = _safe_alert_audit_state(alert)
     alert.status = SecurityAlert.Status.REVIEWED
     alert.reviewed_by = actor
     alert.review_notes = notes or ""
@@ -121,11 +144,20 @@ def review_security_alert(*, alert_id, actor, notes=""):
             "updated_at",
         ]
     )
+    record_audit(
+        actor=actor,
+        action="security_alert.reviewed",
+        entity=alert,
+        before=before,
+        after=_safe_alert_audit_state(alert),
+        request=request,
+    )
+    schedule_security_alert_updated_broadcast(alert.pk)
     return alert
 
 
 @transaction.atomic
-def dismiss_security_alert(*, alert_id, actor, reason):
+def dismiss_security_alert(*, alert_id, actor, reason, request=None):
     _require_active_actor(actor)
     if not (reason or "").strip():
         raise ValidationError({"reason": "A dismissal reason is required."})
@@ -138,6 +170,7 @@ def dismiss_security_alert(*, alert_id, actor, reason):
     if not alert.facility.is_active:
         raise ValidationError({"facility": "The alert facility must be active."})
 
+    before = _safe_alert_audit_state(alert)
     alert.status = SecurityAlert.Status.DISMISSED
     alert.is_false_positive = True
     alert.reviewed_by = actor
@@ -152,6 +185,15 @@ def dismiss_security_alert(*, alert_id, actor, reason):
             "updated_at",
         ]
     )
+    record_audit(
+        actor=actor,
+        action="security_alert.dismissed",
+        entity=alert,
+        before=before,
+        after=_safe_alert_audit_state(alert),
+        request=request,
+    )
+    schedule_security_alert_updated_broadcast(alert.pk)
     return alert
 
 
@@ -163,6 +205,7 @@ def convert_alert_to_incident(
     incident_type,
     description,
     assigned_to=None,
+    request=None,
 ):
     alert = _locked_alert(alert_id)
     if alert.status != SecurityAlert.Status.REVIEWED:
@@ -191,9 +234,19 @@ def convert_alert_to_incident(
         actor=actor,
     )
 
+    before = _safe_alert_audit_state(alert)
     alert.status = SecurityAlert.Status.CONVERTED
     alert.full_clean()
     alert.save(update_fields=["status", "updated_at"])
+    record_audit(
+        actor=actor,
+        action="security_alert.converted_to_incident",
+        entity=alert,
+        before=before,
+        after=_safe_alert_audit_state(alert),
+        request=request,
+    )
+    schedule_security_alert_updated_broadcast(alert.pk)
     return incident
 
 
@@ -290,6 +343,10 @@ def close_incident(*, incident_id, actor, final_report):
         )
     if not incident.facility.is_active:
         raise ValidationError({"facility": "The incident facility must be active."})
+    if incident.actions.filter(completed_at__isnull=True).exists():
+        raise ValidationError(
+            {"actions": "All response actions must be completed before closure."}
+        )
 
     incident.final_report = final_report
     incident.closed_by = actor
@@ -328,8 +385,6 @@ def record_incident_action(*, incident_id, actor, action_taken, notes=""):
         notes=notes or "",
         taken_by=actor,
         created_by=actor,
-        completed_at=timezone.now(),
-        completed_by=actor,
     )
     action.full_clean()
     action.save()

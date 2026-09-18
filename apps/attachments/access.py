@@ -110,6 +110,8 @@ def authorize_protected_file_download(user, instance):
         _authorize_project_scope(user, instance.project)
     elif label == "security.securityalert":
         _authorize_security_facility_scope(user, instance.facility)
+    elif label == "security.cameraevent":
+        _authorize_security_facility_scope(user, instance.camera.facility)
     elif label == "reports.report":
         role_name = getattr(getattr(user, "role", None), "name", None)
         if role_name != Role.SUPER_ADMIN and instance.created_by_id != user.pk:

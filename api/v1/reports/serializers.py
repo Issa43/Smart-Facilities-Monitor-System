@@ -109,6 +109,54 @@ class ReportRequestCreateSerializer(StrictInputSerializer):
             raise serializers.ValidationError(
                 {"template": "Template module and format must match the report."}
             )
+        request = self.context.get("request")
+        can_request_construction = (
+            request is None
+            or Report.Module.CONSTRUCTION in report_modules_for_user(request.user)
+        )
+        if (
+            attrs["module"] == Report.Module.CONSTRUCTION
+            and can_request_construction
+        ):
+            effective_parameters = dict(
+                template.configuration.get("default_parameters", {})
+                if template
+                else {}
+            )
+            effective_parameters.update(attrs["parameters"])
+            allowed = {"project_id", "date_from", "date_to", "period_label"}
+            unknown = set(effective_parameters) - allowed
+            if unknown:
+                raise serializers.ValidationError(
+                    {
+                        "parameters": (
+                            "Unsupported construction report filters: "
+                            + ", ".join(sorted(unknown))
+                        )
+                    }
+                )
+            if not effective_parameters.get("project_id"):
+                raise serializers.ValidationError(
+                    {"parameters": "Construction reports require a project_id."}
+                )
+            date_from_value = effective_parameters.get("date_from")
+            date_to_value = effective_parameters.get("date_to")
+            if bool(date_from_value) != bool(date_to_value):
+                raise serializers.ValidationError(
+                    {
+                        "parameters": (
+                            "Construction reports require both date_from and date_to."
+                        )
+                    }
+                )
+            if date_from_value:
+                date_field = serializers.DateField()
+                date_from = date_field.run_validation(date_from_value)
+                date_to = date_field.run_validation(date_to_value)
+                if date_from > date_to:
+                    raise serializers.ValidationError(
+                        {"parameters": "date_from cannot be later than date_to."}
+                    )
         return attrs
 
 
@@ -118,6 +166,7 @@ class ReportRequestReadSerializer(serializers.ModelSerializer):
     failure_details = serializers.SerializerMethodField()
     download_available = serializers.SerializerMethodField()
     download_url = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
@@ -131,6 +180,7 @@ class ReportRequestReadSerializer(serializers.ModelSerializer):
             "failure_details",
             "download_available",
             "download_url",
+            "file_size",
             "created_by_id",
             "created_at",
             "updated_at",
@@ -159,3 +209,11 @@ class ReportRequestReadSerializer(serializers.ModelSerializer):
             kwargs={"pk": report.pk},
             request=self.context.get("request"),
         )
+
+    def get_file_size(self, report) -> int | None:
+        if not self.get_download_available(report):
+            return None
+        try:
+            return report.file_path.size
+        except (OSError, ValueError):
+            return None
