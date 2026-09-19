@@ -12,10 +12,10 @@ not repeated here.
 
 ## Architecture
 
-### Phase 1 — Foundation ✅ COMPLETE (frozen — see `PHASE1_FORWARD_COMPATIBILITY_AUDIT.md`)
+### Phase 1 — Foundation ✅ COMPLETE (frozen — see `docs/reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md`)
 - **Objectives**: project skeleton, custom User model, RBAC foundation, JWT auth, Swagger.
 - **Deliverables**: `config/`, `apps/common`, `apps/users`, `apps/authentication`; 3 models; full test suite.
-- **Completion criteria**: all met — see `PHASE1_VERIFICATION_REPORT.md`.
+- **Completion criteria**: all met — see `docs/reports/PHASE1_VERIFICATION_REPORT.md`.
 - **Documentation updates**: this entire `docs/` system, created after Phase 1 code.
 
 ### Phase 2 — Docker & Infrastructure (completed and runtime verified)
@@ -44,7 +44,7 @@ not repeated here.
 - **Dependencies**: Phase 2 infrastructure plus a separately approved Attachment
   implementation (`ProjectDocument` depends on it); **note** — `Project.facility`
   FK requires the `facilities` app to exist for its migration to apply (see
-  `PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §6) — either Phase 3 and 4 ship together,
+  `docs/reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §6) — either Phase 3 and 4 ship together,
   or `Project.facility` is added via a later migration once Phase 4 lands. Decide
   explicitly at Phase 3 kickoff, don't default silently.
 - **Deliverables**: full Construction Lifecycle API surface.

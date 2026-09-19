@@ -63,7 +63,7 @@ not duplicated here to avoid drift; this table is the index, Swagger is
 the detail for implemented endpoints.
 
 ### Planned endpoint map (Phase 3+, specified not yet implemented)
-See `SFLMS_Backend_Architecture_v2.md` §5 at the repository root for the
+See `docs/reports/SFLMS_Backend_Architecture_v2.md` §5 for the
 complete planned endpoint map (Projects, Materials, Facilities, Assets,
 Maintenance, Security, AI, Notifications, Reports, Audit). As each group
 is implemented, its table is copied into this document (below, per app)

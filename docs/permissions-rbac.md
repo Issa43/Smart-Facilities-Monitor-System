@@ -41,7 +41,7 @@ correct behavior, not a bug (e.g., a Construction Manager with no
 Fixed at exactly four — adding a fifth is a breaking architectural change
 (ADR-0006), not a data migration.
 
-### Permission matrix (target — see `SFLMS_Backend_Architecture_v2.md` §6 for full detail)
+### Permission matrix (target — see `docs/reports/SFLMS_Backend_Architecture_v2.md` §6 for full detail)
 | Module | Super Admin | Construction Manager | Operations Manager | Security Officer |
 |---|---|---|---|---|
 | Users/Roles | Full CRUD | none | none | none |

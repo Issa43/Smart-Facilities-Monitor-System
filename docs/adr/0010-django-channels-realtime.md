@@ -32,7 +32,7 @@ SecurityAlert remains authoritative even if no WebSocket client is connected.
   tokens and AIKey machine credentials are rejected.
 - `ASGI_APPLICATION` and `config/asgi.py` exist from Phase 1 specifically
   so this integration requires no restructuring later (verified in
-  `PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §4).
+  `docs/reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §4).
 - WebSocket clients use REST for initial state; the live channel provides no
   replay or notification read-state semantics.
 

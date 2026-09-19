@@ -53,9 +53,9 @@ media, Redis, and Beat volumes is explicitly intended.
 
 ## Documentation
 
-Start with [docs/README.md](docs/README.md), then read
-[docs/onboarding.md](docs/onboarding.md), [docs/docker.md](docs/docker.md),
-and [docs/environment.md](docs/environment.md).
+Start with [README.md](README.md), then read
+[onboarding.md](onboarding.md), [docker.md](docker.md),
+and [environment.md](environment.md).
 
 The approved architecture remains
-[SFLMS_Backend_Architecture_v2.md](SFLMS_Backend_Architecture_v2.md).
+[reports/SFLMS_Backend_Architecture_v2.md](reports/SFLMS_Backend_Architecture_v2.md).

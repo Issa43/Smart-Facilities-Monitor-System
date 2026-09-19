@@ -16,7 +16,7 @@ found and fixed during this audit (§5). Everything else checks out.
 ## 1. Custom User Model — will any future model force a change?
 
 Checked every planned FK-to-User relationship across the full architecture
-(`SFLMS_Backend_Architecture_v2.md` §3–§9): `ProjectAssignment.user`,
+(`docs/reports/SFLMS_Backend_Architecture_v2.md` §3–§9): `ProjectAssignment.user`,
 `FacilityAssignment.user`, `MaintenanceOrder.assigned_to`,
 `WorkExecutionLog.technician`, `Fault.reported_by`/`assigned_engineer`,
 `SecurityAlert.reviewed_by`, `Incident.assigned_to`/`created_by`/`closed_by`,

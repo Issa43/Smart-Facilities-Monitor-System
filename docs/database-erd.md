@@ -63,7 +63,7 @@ This is the one deliberate circular reference in the schema (ADR-0014):
 Facility (expansion); `Facility.created_from_project` points backward to
 record which Project originally created it (genesis). A Facility can have
 many Projects pointing at it over time but at most one genesis Project
-pointing back. See `PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §6 for the
+pointing back. See `docs/reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §6 for the
 implementation-order implication (facilities app migration must exist
 before the `Project.facility` FK migration is applied, or both must ship
 in the same phase using a lazy string reference).

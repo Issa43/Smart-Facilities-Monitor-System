@@ -38,7 +38,7 @@ project is considered operationally live.
   (`Project.facility` ↔ `Facility.created_from_project`) — creates a
   genuine implementation-order dependency between the `projects` and
   `facilities` apps, tracked explicitly in
-  `PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §6 and
+  `docs/reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md` §6 and
   `implementation-phases.md` Phase 3's dependency note, rather than left
   as a surprise during implementation.
 

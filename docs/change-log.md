@@ -69,7 +69,7 @@ N/A.
 - Full test suite: model tests, API permission tests, JWT flow tests.
 - Why: establish the access-control foundation every later domain app
   builds on (ADR-0005, ADR-0006, ADR-0011, ADR-0012).
-- Verification: `PHASE1_VERIFICATION_REPORT.md` (static analysis — no
+- Verification: `docs/reports/PHASE1_VERIFICATION_REPORT.md` (static analysis — no
   live Django/PostgreSQL available in the build sandbox, disclosed
   explicitly).
 
@@ -80,7 +80,7 @@ N/A.
 - Added `persistAuthorization: True` to Swagger settings (minor UX
   improvement, non-breaking).
 - Confirmed: no other breaking changes anticipated for any future phase.
-  Full findings: `PHASE1_FORWARD_COMPATIBILITY_AUDIT.md`.
+  Full findings: `docs/reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md`.
 - Conclusion recorded: "Phase 1 foundation is frozen and future phases
   will build on it without architectural modifications."
 
@@ -125,7 +125,7 @@ N/A.
      written before that decision was finalized. Corrected.
   4. Four documents (`database-design.md`, `api-specification.md`,
      `docker.md`, `permissions-rbac.md`) cited
-     `SFLMS_Backend_Architecture_v2.md` as living "at the repository
+     `docs/reports/SFLMS_Backend_Architecture_v2.md` as living "at the repository
      root" — it had only ever been delivered as a standalone download,
      never actually added to the repository. Copied into the repo root;
      `folder-structure.md` updated to list it. (The superseded v1
@@ -137,7 +137,7 @@ N/A.
      indexed `0001-backend-only-repository.md`), not matching the index
      committed in `docs/adr/README.md`. Removed — the correctly-named 15
      ADRs plus the index are the only files in `docs/adr/`.
-- Full findings: `REPOSITORY_AUDIT_REPORT.md`.
+- Full findings: `docs/reports/REPOSITORY_AUDIT_REPORT.md`.
 
 ## [2026-08-06] Phase 2 Docker & Infrastructure
 - Added a shared non-root Python 3.11 image and production-oriented Compose

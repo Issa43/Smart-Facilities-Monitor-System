@@ -59,7 +59,7 @@ Indexes: `email`, `username`, `role`.
 Full field lists for every planned model (Project, ProjectPhase,
 Facility, Asset, MaintenanceOrder, SecurityAlert, Incident,
 CameraDetectionEvent, etc.) are maintained in
-`SFLMS_Backend_Architecture_v2.md` §3 at the repository root — that
+`docs/reports/SFLMS_Backend_Architecture_v2.md` §3 — that
 document is the field-level source of truth for unimplemented models and
 is intentionally not duplicated here to avoid drift between two competing
 copies. **Rule: when a model from that document is implemented, its final

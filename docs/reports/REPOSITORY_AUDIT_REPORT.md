@@ -33,7 +33,7 @@ all real filenames in the repository.
 ## 2. ADR Accuracy
 
 **Check A — every `ADR-NNNN` citation resolves to a real ADR.** Scanned
-all 51 `docs/` files plus `SFLMS_Backend_Architecture_v2.md` for the
+all 51 `docs/` files plus `docs/reports/SFLMS_Backend_Architecture_v2.md` for the
 pattern `ADR-?\d{4}`, cross-referenced against the 15 real files in
 `docs/adr/`.
 **Result: every cited number (0001–0015) exists. 0 dangling references.**
@@ -76,7 +76,7 @@ the index — 0 stray or duplicate files anywhere in the repository.**
 
 Cross-checked `docs/database-design.md`, `docs/permissions-rbac.md`,
 `docs/api-specification.md`, and `docs/docker.md` against
-`SFLMS_Backend_Architecture_v2.md` (the approved pre-Phase-1 architecture
+`docs/reports/SFLMS_Backend_Architecture_v2.md` (the approved pre-Phase-1 architecture
 specification) for the Facility/Project lifecycle model, the four-role
 permission matrix, the Attachment `entity_type`/`entity_id` decision, and
 the Celery/Redis/Channels infrastructure plan.
@@ -142,11 +142,11 @@ environment, consistent with `docker.md`/ADR-0004.
 
 ### Issue #4 — architecture spec cited as "at the repository root" without existing there
 **Problem:** `database-design.md`, `api-specification.md`, `docker.md`,
-and `permissions-rbac.md` all cited `SFLMS_Backend_Architecture_v2.md` as
+and `permissions-rbac.md` all cited `docs/reports/SFLMS_Backend_Architecture_v2.md` as
 a repository-root file — it had only ever been delivered as a standalone
 download in this conversation, never actually committed to the
 repository. This made every one of those four citations factually false.
-**Fix:** Copied `SFLMS_Backend_Architecture_v2.md` into the repository
+**Fix:** Copied `docs/reports/SFLMS_Backend_Architecture_v2.md` into the repository
 root; `folder-structure.md` updated to list it, with a note explaining
 its role (source of truth for unimplemented models/endpoints until each
 is copied into `docs/` on implementation). The superseded v1 document

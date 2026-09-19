@@ -72,12 +72,21 @@ explicitly stated otherwise.
    - [`future-roadmap.md`](./future-roadmap.md) — post-production evolution ideas
    - [`change-log.md`](./change-log.md) — chronological record of what actually changed and when
 
+10. **Point-in-time reports & artifacts** (not living documents — snapshots of a moment)
+   - [`reports/SFLMS_Backend_Architecture_v2.md`](./reports/SFLMS_Backend_Architecture_v2.md) — the approved pre-Phase-1 architecture spec; still the field-level source of truth for models and endpoints that are specified but not yet implemented
+   - [`reports/PHASE1_VERIFICATION_REPORT.md`](./reports/PHASE1_VERIFICATION_REPORT.md) — Phase 1 completion evidence
+   - [`reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md`](./reports/PHASE1_FORWARD_COMPATIBILITY_AUDIT.md) — forward-compatibility findings
+   - [`reports/REPOSITORY_AUDIT_REPORT.md`](./reports/REPOSITORY_AUDIT_REPORT.md) — repository-wide audit findings
+   - [`reports/AI_MODEL_FITTING_REPORT.md`](./reports/AI_MODEL_FITTING_REPORT.md) — CV model fitting and evaluation
+   - [`verification-artifacts/`](./verification-artifacts/) — generated QA report outputs (xlsx/pdf) kept as evidence
+
 ---
 
 ## Document contract
 
-Every document in this directory (except this index and the ADR records,
-which follow their own fixed format) contains these sections, in order:
+Every document in this directory (except this index, the ADR records, and
+the point-in-time snapshots under `reports/`, which follow their own fixed
+formats) contains these sections, in order:
 
 `Purpose · Scope · Architecture · Business Rules · Technical Notes ·
 Current Implementation · Future Evolution · Important Decisions ·
