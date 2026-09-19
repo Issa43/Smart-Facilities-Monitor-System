@@ -22,7 +22,7 @@ The **Smart Facility Monitoring System (SFMS)** is an end-to-end real-time compu
 
 It combines custom-trained **YOLO26** detection models — for fire and smoke, and for Syrian licence plates with OCR — with a full **React + TypeScript** management dashboard, providing continuous automated site surveillance, proactive hazard mitigation, and intelligent perimeter management.
 
-> **Current state:** the detection models and the web frontend are built and working independently. The backend layer that connects them is the remaining integration work — see the Roadmap at the bottom of this page.
+> **Current state:** the detection models, the Django/DRF backend, and the React dashboard are all built, and the dashboard now runs against the live backend over JWT. The remaining gap is wiring the detection pipelines into the backend AI layer (`apps/ai_engine` is still a scaffold) — see the Roadmap at the bottom of this page.
 
 ---
 
@@ -137,7 +137,7 @@ The pipeline accepts a video, a photo, or a folder of both, and processes a 1080
 
 ## 🖥️ Management Dashboard
 
-A full React + TypeScript application — **60 routed screens**, fully Arabic (RTL), running standalone on built-in fixture data kept in the browser, with no backend or database required.
+A full React + TypeScript application — **60 routed screens**, fully Arabic (RTL), authenticating against the Django backend over JWT and driven entirely by live REST data.
 
 | Area | Screens | Covers |
 | --- | :---: | --- |
@@ -217,11 +217,22 @@ Smart-Facilities-Monitor-System/
 │       │   ├── Results/{Train,Test}/                 # fine-tuned Syrian-plate detector results
 │       │   └── transferlearningonsyrianplatesdataset.ipynb
 │       └── edited-plates-detector-v2-yolo26n.ipynb   # base detector training + test notebook
-├── Smart-Facility-Platform-main_Front_End/           # React + TypeScript dashboard
+├── frontend/                                         # React + TypeScript dashboard
 │   └── src/
-│       ├── features/                                 # auth, construction, operations, security, shared, super-admin
-│       ├── api/                                      # fixture-backed data layer
+│       ├── features/                                 # auth, construction, operations, safety, security, shared, super-admin
+│       ├── api/                                      # REST data layer (live backend)
 │       └── routes/                                   # per-role route and navigation config
+├── apps/                                             # Django apps: auth, projects, construction, facilities,
+│                                                     #   assets, maintenance, materials, safety, security,
+│                                                     #   reports, notifications, audit, ai_engine
+├── api/                                              # DRF serializers, viewsets, routers
+├── config/                                           # Django settings package, Celery, ASGI/WSGI
+├── docker/                                           # container entrypoints and service configs
+├── docs/                                             # backend docs, onboarding, integration matrix
+├── tests/                                            # pytest suite
+├── ops/                                              # backup/restore and operational tooling
+├── manage.py
+├── docker-compose.yml
 ├── screenshots/                                      # dashboard screenshots used above
 ├── LICENSE
 ├── .gitignore
@@ -245,27 +256,39 @@ Each model's `Deployment/` folder is self-contained and has its own README:
 | **Tooling** | oxlint, Prettier, TypeScript type checking |
 | **Training Infrastructure** | Kaggle, NVIDIA Tesla T4 GPUs, Python 3.12, PyTorch 2.10.0 (CUDA 12.8), Ultralytics 8.4 |
 | **Local Inference** | Python 3.13, CUDA-enabled PyTorch; tested on an NVIDIA Quadro M2200 laptop GPU |
-| **Backend** | *Not built yet — planned* |
+| **Backend** | Django 5.0, Django REST Framework 3.15, SimpleJWT, drf-spectacular, Django Channels 4 (WebSockets), Celery 5.4 + Redis, PostgreSQL (psycopg2) |
+| **Infrastructure** | Docker Compose (backend, Postgres, Redis, Celery worker + beat), Prometheus metrics, encrypted backup/restore tooling |
+| **Backend Testing** | pytest, pytest-django, Playwright (frontend e2e) |
 
 ---
 
 ## 🚀 Getting Started
 
-### Run the Dashboard (Frontend)
+### Run the Platform (Backend + Frontend)
 
-Requires **Node.js 20.19+ or 22.12+** — the minimum for Vite 8, its React plugin, and oxlint. The dashboard runs standalone with built-in fixture data; no backend or database is needed.
+The dashboard is wired to the live Django backend over JWT, so start the backend first. Docker Compose is the supported runtime.
 
 ```bash
-cd Smart-Facility-Platform-main_Front_End
+cp .env.example .env          # then set SECRET_KEY and DB_PASSWORD
+docker compose up -d --build
+docker compose exec backend python manage.py createsuperuser
+```
+
+The backend serves `http://localhost:8000` — API docs at `/api/docs/`, admin at `/admin/`, health at `/health/`.
+
+Then start the dashboard. Requires **Node.js 20.19+ or 22.12+** — the minimum for Vite 8, its React plugin, and oxlint.
+
+```bash
+cd frontend
 npm install
 npm run dev
 ```
 
-The browser opens automatically; if it does not, go to `http://localhost:5173`.
+Open `http://localhost:5173` and sign in with a real account. The frontend defaults to `VITE_API_BASE_URL=http://localhost:8000/api/v1`; copy `frontend/.env.example` to `frontend/.env` to change it. Keep `VITE_ENABLE_DEMO_DATA=false` for any connected run — the legacy fixture layer is gated behind that flag and is never used as an API fallback.
 
-Other scripts: `npm run build` (type-check and production build into `dist/`), `npm run preview` (serve that build), `npm run typecheck`, `npm run lint`, `npm run format`.
+Other frontend scripts: `npm run build` (type-check and production build into `dist/`), `npm run preview` (serve that build), `npm run typecheck`, `npm run lint`, `npm run format`.
 
-> The frontend has its own detailed Arabic setup guide: [Smart-Facility-Platform-main_Front_End/README.md](Smart-Facility-Platform-main_Front_End/README.md)
+> Detailed guides: [frontend/README.md](frontend/README.md) (Arabic frontend setup) and [docs/backend-quickstart.md](docs/backend-quickstart.md) (backend commands and operations).
 
 ### Run a Detection Pipeline
 
@@ -319,10 +342,12 @@ Each pipeline opens an OpenCV window; press **`q`** to stop.
 * [x] Replace EasyOCR with PaddleOCR PP-OCRv6 (96.4% exact plate reads, no wrong reads on the 83-photo evaluation set).
 * [x] Build React dashboard frontend (60 screens, fully Arabic/RTL).
 * [ ] Train Perimeter Intrusion detection model.
-* [ ] Build backend API to connect the detection pipelines to the dashboard.
-* [ ] Implement WebSocket connection for real-time web notifications.
+* [x] Build the Django/DRF backend API (16 apps, JWT auth, four-role RBAC, reports, notifications, audit logs).
+* [x] Connect the React dashboard to the live backend (legacy fixtures retired behind an explicit dev flag).
+* [ ] Wire the detection pipelines into the backend AI layer (`apps/ai_engine` is currently a scaffold).
+* [x] Implement WebSocket connection for real-time web notifications (Django Channels + Redis).
 * [ ] Replace interactive OpenCV windows with headless production entry points.
-* [ ] Deploy Docker containerization for production environments.
+* [x] Deploy Docker containerization for production environments (backend, Postgres, Redis, Celery worker + beat).
 
 ---
 

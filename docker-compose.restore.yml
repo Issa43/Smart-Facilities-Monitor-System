@@ -1,0 +1,26 @@
+services:
+  backend:
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+      SECURE_SSL_REDIRECT: "False"
+      DB_NAME: sflms_restore
+      RUN_MIGRATIONS: "0"
+      COLLECT_STATIC: "0"
+    ports:
+      - "18001:8000"
+    volumes:
+      - .:/app
+      - ${RESTORE_WORKDIR:?RESTORE_WORKDIR is required}:/restore:ro
+  postgres:
+    environment:
+      POSTGRES_DB: sflms_restore
+  celery_worker:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DB_NAME: sflms_restore
+  celery_beat:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DB_NAME: sflms_restore

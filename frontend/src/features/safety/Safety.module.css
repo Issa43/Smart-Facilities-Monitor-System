@@ -1,0 +1,109 @@
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.cellStack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cellTitle {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cellMeta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.actionBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Human decision workflow -------------------------------------------- */
+
+.proposal-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.proposal-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  display: grid;
+  gap: 10px;
+}
+
+.proposal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.proposal-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.proposal-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.proposal-facts > div {
+  display: grid;
+  gap: 2px;
+}
+
+.proposal-facts dt {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.proposal-facts dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.window-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .window-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,72 @@
+.wrapper {
+  display: grid;
+  gap: 6px;
+}
+
+.label {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.map {
+  height: 320px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  /* Leaflet panes are LTR internally; the surrounding RTL layout must not
+     mirror tile positioning or the controls. */
+  direction: ltr;
+  cursor: crosshair;
+  z-index: 0;
+}
+
+.map:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.readout {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+/* A CSS-only marker: Leaflet's bundled PNG icons resolve to paths the bundler
+   cannot rewrite, which renders as a broken image. */
+.pin {
+  background: transparent;
+  border: 0;
+}
+
+.pin span {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--critical, #c0392b);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+@media (max-width: 640px) {
+  .map {
+    height: 240px;
+  }
+}

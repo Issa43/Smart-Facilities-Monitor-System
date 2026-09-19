@@ -8,18 +8,18 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
@@ -37,7 +37,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
-htmlcov/
+/htmlcov/
 .tox/
 .nox/
 .coverage
@@ -49,7 +49,7 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
-cover/
+/cover/
 
 # Translations
 *.mo
@@ -62,7 +62,7 @@ db.sqlite3
 db.sqlite3-journal
 
 # Flask stuff:
-instance/
+/instance/
 .webassets-cache
 
 # Scrapy stuff:
@@ -73,7 +73,7 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
-target/
+/target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -216,3 +216,42 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ─────────────────────────────────────────────────────────────
+# SFLMS application (backend + frontend)
+# ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.python_history
+*.sqlite3
+.env
+venv/
+env/
+.pytest_cache/
+staticfiles/
+media/*
+!media/.gitkeep
+protected_media/
+.DS_Store
+*.log
+.vscode/
+.idea/
+.verification/
+.verification-schema.yml
+mobile-fcm-test/app/google-services.json
+mobile-fcm-test/local.properties
+mobile-fcm-test/.gradle/
+mobile-fcm-test/**/build/
+mobile-fcm-test/.idea/
+
+# ─────────────────────────────────────────────────────────────
+# Node / frontend
+# ─────────────────────────────────────────────────────────────
+node_modules/
+.vite/
+.vite-temp/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+playwright-report/
+test-results/
