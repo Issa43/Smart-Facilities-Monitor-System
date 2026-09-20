@@ -1,0 +1,4 @@
+# Test footage is local-only; the folder itself is tracked so the bind mount resolves.
+*
+!.gitignore
+!README.md

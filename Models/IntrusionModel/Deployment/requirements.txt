@@ -1,0 +1,36 @@
+# Intrusion detector dependencies.
+#
+# CPU build, deliberately. Inference runs through ONNX Runtime rather than
+# PyTorch, so the CUDA wheels would add ~11 GB to the image for nothing.
+#
+# This is a size/speed trade, not a hard limit: the fire detector holds only
+# 534 MiB of the 4 GB card, so this model would fit on the GPU alongside it.
+#
+# To run it on the GPU instead, switch the index URL to
+#   https://download.pytorch.org/whl/cu126
+# and pin torch==2.14.0 (the version verified on this Maxwell/sm_52 card),
+# then set INTRUSION_DEVICE=0 on the service.
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
+torch
+torchvision
+ultralytics
+opencv-python-headless
+
+# ByteTrack's linear-assignment solver. Ultralytics does not declare it, and
+# pip-installs it on first track() call instead -- which needs a network at
+# container start and fails in an offline deployment. Install it at build time.
+lap>=0.5.12
+
+# ONNX Runtime, not PyTorch, does the inference here. Measured on a real frame
+# from this camera, 1280x1280, same container, CPU:
+#     pytorch  3959 ms/frame (0.25 fps)
+#     onnx      854 ms/frame (1.17 fps)   -> 4.6x
+# The export is fp32, so this is a pure runtime win with no accuracy cost --
+# unlike dropping imgsz to 640, which loses distant people.
+# torch still has to be installed: ultralytics imports it regardless of the
+# model format, and ByteTrack's postprocessing uses it.
+onnxruntime
+onnx
+onnxslim

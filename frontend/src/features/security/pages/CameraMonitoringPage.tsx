@@ -1,6 +1,6 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Video, VideoOff } from 'lucide-react'
+import { Camera, Video, VideoOff } from 'lucide-react'
 import { formatNumber, formatPercent } from '@/lib/format'
 import { qk } from '@/lib/queryKeys'
 import { listCameras, listSecurityFacilities, type SecurityCamera } from '@/api/security'
@@ -11,10 +11,116 @@ import { FilterBar, SearchInput, Toolbar } from '@/components/ui/Controls/Contro
 import { Alert, ErrorState, SkeletonLines, StateCard } from '@/components/ui/Feedback/Feedback'
 import { KpiCard } from '@/components/ui/KpiCard/KpiCard'
 import { KpiGrid, Section } from '@/components/ui/Display/Display'
+import { Button } from '@/components/ui/Button/Button'
 import styles from './Emergency.module.css'
 
 type CameraRow = SecurityCamera & { facilityName: string }
 type ZoneFilter = string
+
+/**
+ * Live view of a detector's camera.
+ *
+ * This deliberately does NOT use getUserMedia. On Windows the webcam is
+ * effectively exclusive, so the browser cannot open it while a detector holds
+ * it -- and a detector must hold it, because that is what runs the model.
+ * Instead each detector republishes its annotated frames as MJPEG and the
+ * dashboard consumes them, which is also how a real CCTV camera behaves: the
+ * camera is the stream source, the dashboard is a viewer.
+ *
+ * Every model runs in its own container and publishes its own stream on its
+ * own port, so each one gets its own panel here. Frames arrive with that
+ * model's detection boxes already drawn.
+ */
+const FIRE_STREAM_URL =
+  import.meta.env.VITE_CAMERA_STREAM_URL?.trim() || 'http://localhost:8090/stream'
+const INTRUSION_STREAM_URL =
+  import.meta.env.VITE_INTRUSION_STREAM_URL?.trim() || 'http://localhost:8091/stream'
+
+type DetectorFeedProps = {
+  title: string
+  description: string
+  streamUrl: string
+  /** Named in the error text so the operator knows which service to start. */
+  serviceHint: string
+}
+
+function DetectorFeed({ title, description, streamUrl, serviceHint }: DetectorFeedProps) {
+  const [active, setActive] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Changing the key forces a fresh <img>, which reopens the MJPEG connection.
+  const [attempt, setAttempt] = useState(0)
+
+  const start = useCallback(() => {
+    setError(null)
+    setAttempt((value) => value + 1)
+    setActive(true)
+  }, [])
+
+  const stop = useCallback(() => {
+    setActive(false)
+    setError(null)
+  }, [])
+
+  const handleError = useCallback(() => {
+    setActive(false)
+    setError(`تعذّر الوصول إلى بث الكاميرا. تأكد من تشغيل ${serviceHint}.`)
+  }, [serviceHint])
+
+  return (
+    <div className={styles.localCamera}>
+      <div className={styles.localCameraCopy}>
+        <div className={styles.localCameraTitle}>
+          <Camera size={18} />
+          {title}
+        </div>
+        <p>{description}</p>
+        {error && <p className={styles.cameraError}>{error}</p>}
+      </div>
+      <div className={styles.localCameraActions}>
+        <Button onClick={active ? stop : start}>
+          {active ? <VideoOff size={15} /> : <Video size={15} />}
+          {active ? 'إيقاف البث' : 'عرض البث المباشر'}
+        </Button>
+      </div>
+      <div className={styles.localCameraPreview}>
+        {active ? (
+          <img
+            key={attempt}
+            src={`${streamUrl}?t=${attempt}`}
+            alt={title}
+            onError={handleError}
+          />
+        ) : (
+          <>
+            <VideoOff size={30} />
+            <span>البث غير مُشغَّل</span>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LiveDetectorFeeds() {
+  return (
+    <Section>
+      <div className={styles.detectorFeedGrid}>
+        <DetectorFeed
+          title="كشف الحريق والدخان — بث مباشر"
+          description="بث مباشر من الكاميرا عبر نموذج كشف الحريق والدخان، مع إظهار مربعات الحريق والدخان المكتشفة لحظياً."
+          streamUrl={FIRE_STREAM_URL}
+          serviceHint="خدمة كشف الحريق (docker compose --profile detector up -d)"
+        />
+        <DetectorFeed
+          title="كشف التسلل — بث مباشر"
+          description="بث مباشر من الكاميرا عبر نموذج كشف التسلل، مع تتبّع الأشخاص وإظهار منطقة التسلل والمربعات المؤكدة."
+          streamUrl={INTRUSION_STREAM_URL}
+          serviceHint="خدمة كشف التسلل (docker compose --profile intrusion up -d)"
+        />
+      </div>
+    </Section>
+  )
+}
 
 export function CameraMonitoringPage() {
   const camerasQuery = useQuery({ queryKey: ['security', 'cameras'], queryFn: listCameras })
@@ -113,6 +219,8 @@ export function CameraMonitoringPage() {
           />
         </KpiGrid>
       </Section>
+
+      <LiveDetectorFeeds />
 
       {offline > 0 && (
         <Section>

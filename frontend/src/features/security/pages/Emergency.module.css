@@ -228,3 +228,112 @@
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* One panel per detector container. Two columns on a wide screen so the
+   fire/smoke and intrusion feeds can be watched side by side; the media query
+   below collapses them on narrow screens. */
+.detectorFeedGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.localCamera {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-5);
+  align-items: center;
+  padding: var(--space-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.localCameraCopy p {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.localCameraTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: var(--fw-extrabold);
+}
+
+.localCameraActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.localCameraPreview {
+  grid-column: 1 / -1;
+  min-height: 180px;
+  padding: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow: hidden;
+  color: var(--text-faint);
+  background: #17232b;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.localCameraPreview video {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+}
+
+/* The MJPEG feed is a real camera frame (4:3 at 640x480), not decoration.
+   `cover` at full card width cropped the top and bottom of the scene, which
+   hides exactly the detections the operator is meant to see. Scale to fit
+   instead and keep the sensor's own aspect ratio. */
+.localCameraPreview img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  margin-inline: auto;
+  background: #000;
+  border-radius: var(--radius-sm);
+}
+
+/* Selfie preview is mirrored so it feels natural. The detector's MJPEG stream
+   is NOT: its detection labels are drawn into the pixels, and mirroring would
+   render them backwards. */
+.localCameraPreview video {
+  transform: scaleX(-1);
+}
+
+.cameraError {
+  color: var(--critical) !important;
+  font-weight: var(--fw-bold);
+}
+
+.detectorFeedGrid .localCamera {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 700px) {
+  .detectorFeedGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .localCamera {
+    grid-template-columns: 1fr;
+  }
+
+  .localCameraActions {
+    justify-content: flex-start;
+  }
+}

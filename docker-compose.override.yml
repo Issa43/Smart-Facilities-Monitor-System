@@ -23,10 +23,210 @@ services:
       - .:/app
       - static_data:/app/staticfiles
       - media_data:/app/media
-      - protected_media_data:/app/protected_media
+      # Overrides the named volume from docker-compose.yml at the same target:
+      # in dev the snapshots must be reachable from the host so a host-run
+      # detector and the backend share one directory.
+      - ./protected_media:/app/protected_media
     depends_on:
       mailpit:
         condition: service_healthy
+
+  # Containerised dashboard, served by nginx and proxying /api/ and /ws/ to the
+  # backend over the internal network. Running `npm run dev` on the host instead
+  # remains supported; that path talks to the backend directly on 8000.
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Relative base: nginx serves the app and the API on the same origin,
+        # so no CORS preflight and no hard-coded host.
+        VITE_API_BASE_URL: /api/v1
+        # Resolved by the browser, so it points at the published host
+        # port of the detector, not at the container name.
+        VITE_CAMERA_STREAM_URL: ${VITE_CAMERA_STREAM_URL:-http://localhost:8090/stream}
+        VITE_INTRUSION_STREAM_URL: ${VITE_INTRUSION_STREAM_URL:-http://localhost:8091/stream}
+    image: sflms-frontend:dev
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: the container resolves localhost to ::1
+      # first and nginx listens only on 0.0.0.0:8080, so the IPv6 attempt
+      # is refused and the service never becomes healthy.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  # Fire/smoke detector. Opt-in: it pulls torch and is only needed when
+  # demonstrating the CV pipeline, so it sits behind a profile and does NOT
+  # start with a plain `docker compose up`. Start it with:
+  #   docker compose --profile detector up -d detector
+  #
+  # It shares ./protected_media with the backend because the camera-events
+  # API requires the snapshot JPEG to already exist in protected storage; there
+  # is no upload endpoint.
+  detector:
+    profiles: ["detector"]
+    build:
+      context: ./Models/SmokeAndFireModel/Deployment
+      dockerfile: Dockerfile
+    image: sflms-detector:dev
+    environment:
+      SFLMS_API_URL: http://backend:8000/api/v1/camera-events/
+      SFLMS_KEY_ID: ${SFLMS_KEY_ID:-}
+      SFLMS_SECRET: ${SFLMS_SECRET:-}
+      SFLMS_CAMERA_ID: ${SFLMS_CAMERA_ID:-}
+      SFLMS_FACILITY_ID: ${SFLMS_FACILITY_ID:-}
+      SFLMS_ROI_ID: ${SFLMS_ROI_ID:-}
+      SFLMS_PROTECTED_MEDIA_ROOT: /app/protected_media
+      # The Windows host publishes its laptop webcam to MediaMTX. Override this
+      # with a real CCTV RTSP/HTTP URL when needed.
+      VIDEO_SOURCE: ${VIDEO_SOURCE:-rtsp://mediamtx:8554/laptop}
+      VIDEO_LOOP: ${VIDEO_LOOP:-1}
+      # Read RTSP over TCP. The default UDP transport sends RTP to ports
+      # MediaMTX does not publish, so the session dies after a few seconds.
+      # OpenCV has no API for this; it only reads this FFmpeg env var.
+      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
+      DETECTOR_ROI: ${DETECTOR_ROI:-}
+      MAX_RUNTIME_SECONDS: ${MAX_RUNTIME_SECONDS:-0}
+      # config.py sets DEVICE=0 (CUDA device 0). Override with 'cpu' on a
+      # host without an NVIDIA GPU, or the model load will fail.
+      DETECTOR_DEVICE: ${DETECTOR_DEVICE:-0}
+      # Live-camera tuning.
+      #
+      # Confidence stays at the model's own F1-optimal operating point from
+      # the test-set curve. Raising it is the wrong lever for false alarms:
+      # it does not drop frames uniformly, it drops the ones the model finds
+      # hard -- small, distant, dim or smoke-obscured fire -- which is
+      # precisely the early-stage fire this system exists to catch, and it
+      # drops them systematically rather than at random.
+      #
+      # Precision comes from the temporal gate below instead. A lamp or a
+      # skin tone clears the threshold for a frame or two; a fire clears it
+      # for seconds. That is a dimension the per-frame test set cannot
+      # measure, so it costs no recall on real fire.
+      CONF_THRESHOLD: ${CONF_THRESHOLD:-0.378}
+      # Positive checks required within the 6-check window. This is the
+      # false-alarm gate, so each class gets the amount of filtering its
+      # per-frame reliability warrants.
+      #
+      # On the test set at this confidence, Fire runs ~0.73 precision and
+      # Smoke ~0.83, so Fire emits the noisier per-frame signal and needs
+      # MORE corroboration, not less. config.py ships the opposite split
+      # (Fire 3 / Smoke 4) with no stated derivation; it gives the weaker
+      # class the weaker filter. Smoke also precedes fire, so it is the
+      # earlier warning and should not be the slower one to trip.
+      #
+      # At FRAME_SKIP=5 on an ~18fps stream these are ~1.1s (Smoke) and
+      # ~1.4s (Fire) of sustained detection.
+      FIRE_ALERT_FRAMES: ${FIRE_ALERT_FRAMES:-4}
+      SMOKE_ALERT_FRAMES: ${SMOKE_ALERT_FRAMES:-3}
+      COOLDOWN_SECONDS: ${COOLDOWN_SECONDS:-30}
+    # The dashboard embeds the detector's annotated MJPEG feed directly
+    # (VITE_CAMERA_STREAM_URL defaults to http://localhost:8090/stream), so the
+    # stream port must be published or the live view breaks when the detector
+    # runs in a container rather than on the host.
+    ports:
+      - "${STREAM_PORT:-8090}:8090"
+    volumes:
+      - ./protected_media:/app/protected_media
+      - ./Models/SmokeAndFireModel/Deployment/samples:/samples:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+    # Verified on this project's GPU: Quadro M2200 (sm_52) is visible to
+    # containers through the nvidia runtime, and torch 2.14.0+cu126 ships
+    # sm_50 kernels. Remove this block and set DETECTOR_DEVICE=cpu to run
+    # without a GPU.
+    gpus: all
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  # Intrusion detector (person-in-zone). Opt-in like the fire detector:
+  #   docker compose --profile intrusion up -d intrusion
+  #
+  # Same torch/ultralytics stack as `detector`, so it is a second AI ingestion
+  # client rather than anything new architecturally: it reads frames from
+  # MediaMTX, writes snapshots into the shared ./protected_media, and POSTs
+  # confirmed intrusions to the backend with its OWN machine credential and
+  # camera id. Give it a different camera from the fire detector.
+  intrusion:
+    profiles: ["intrusion"]
+    build:
+      context: ./Models/IntrusionModel/Deployment
+      dockerfile: Dockerfile
+    image: sflms-intrusion:dev
+    environment:
+      SFLMS_API_URL: http://backend:8000/api/v1/camera-events/
+      SFLMS_KEY_ID: ${INTRUSION_KEY_ID:-}
+      SFLMS_SECRET: ${INTRUSION_SECRET:-}
+      SFLMS_CAMERA_ID: ${INTRUSION_CAMERA_ID:-}
+      SFLMS_FACILITY_ID: ${SFLMS_FACILITY_ID:-}
+      SFLMS_ROI_ID: ${INTRUSION_ROI_ID:-}
+      SFLMS_PROTECTED_MEDIA_ROOT: /app/protected_media
+      VIDEO_SOURCE: ${INTRUSION_VIDEO_SOURCE:-rtsp://mediamtx:8554/laptop}
+      VIDEO_LOOP: ${INTRUSION_VIDEO_LOOP:-1}
+      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
+      # Zone polygon in pixels, "x1,y1 x2,y2 ..."; empty = whole frame.
+      INTRUSION_ZONE: ${INTRUSION_ZONE:-}
+      # 1280 is the measured default (8.7 -> 16.1 persons/frame vs 640).
+      #
+      # MUST match the size the ONNX model was exported at: the export uses
+      # dynamic=False, so the graph has a fixed 1280x1280 input and any other
+      # value fails at inference. To change it, re-export:
+      #   docker compose run --rm intrusion python -c "from ultralytics import       #     YOLO; YOLO('yolo26n.pt').export(format='onnx', imgsz=N,       #     dynamic=False, simplify=True)"
+      INTRUSION_IMGSZ: ${INTRUSION_IMGSZ:-1280}
+      INTRUSION_DWELL_SECONDS: ${INTRUSION_DWELL_SECONDS:-0.35}
+      # CPU by default, and the image is built CPU-only to match (see
+      # requirements.txt). Inference runs through ONNX Runtime, which is ~4.6x
+      # faster than PyTorch here at the same resolution.
+      #
+      # Measured, not assumed: the fire detector holds only 534 MiB of the
+      # 4 GB card, so there IS room for this model on the GPU too. Going that
+      # route means rebuilding the image against the cu126 index and using
+      # yolo26n.pt instead of the ONNX graph, which takes it from ~730 MB to
+      # ~12 GB. Worth it for ~15-30 fps; not required for correctness.
+      DETECTOR_DEVICE: ${INTRUSION_DEVICE:-cpu}
+      STREAM_PORT: 8090
+    # Distinct host port: `detector` already publishes 8090.
+    ports:
+      - "${INTRUSION_STREAM_PORT:-8091}:8090"
+    volumes:
+      - ./protected_media:/app/protected_media
+      - ./Models/IntrusionModel/Deployment/samples:/samples:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  # RTSP relay for host-published laptop webcams and physical CCTV cameras.
+  # The host publishes to rtsp://localhost:8554/laptop; containers consume
+  # rtsp://mediamtx:8554/laptop over the internal Docker network.
+  mediamtx:
+    image: bluenviron/mediamtx:1.15.0
+    ports:
+      - "8554:8554"
+      - "8888:8888"
+      - "8889:8889"
+      - "8189:8189/udp"
+    restart: unless-stopped
+    networks:
+      - sflms_internal
 
   # Local mail sink: SMTP on 1025 inside the Docker network, web inbox on 8025.
   mailpit:
@@ -69,7 +269,7 @@ services:
     volumes:
       - .:/app
       - media_data:/app/media
-      - protected_media_data:/app/protected_media
+      - ./protected_media:/app/protected_media
     depends_on:
       mailpit:
         condition: service_healthy
