@@ -1,0 +1,20 @@
+# Detector service dependencies.
+#
+# CUDA build, pinned to the exact torch that is verified working on this
+# project's GPU (Quadro M2200, compute capability 5.2 / Maxwell):
+#
+#   torch 2.14.0+cu126 -> arch list includes sm_50, matmul verified on device
+#
+# Maxwell matters here: newer CUDA wheels have been dropping sm_5x, so do not
+# bump torch without re-checking `torch.cuda.get_arch_list()` contains sm_50.
+#
+# For a CPU-only host, swap the index URL below for
+#   https://download.pytorch.org/whl/cpu
+# and set DETECTOR_DEVICE=cpu on the service (config.py defaults DEVICE=0,
+# which means CUDA device 0 and will fail without a GPU).
+--extra-index-url https://download.pytorch.org/whl/cu126
+
+torch==2.14.0
+torchvision
+ultralytics
+opencv-python-headless

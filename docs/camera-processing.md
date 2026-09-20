@@ -71,6 +71,21 @@ does not broadcast. REST remains authoritative for initial/reconnect state.
 The WebSocket never carries frames, raw detections, storage keys, or snapshot
 content and never accepts AIKey credentials.
 
+## Laptop webcam development source
+
+For local development, the Docker Compose override includes a MediaMTX RTSP
+relay. A Windows host publishes the laptop webcam to
+`rtsp://localhost:8554/laptop`; the detector reads the same stream internally
+as `rtsp://mediamtx:8554/laptop`. Run `ops/start_laptop_camera.ps1` after
+starting the stack with the detector profile. The script requires `ffmpeg` on
+the Windows host and does not expose the webcam as a Docker device.
+
+The detector remains responsible for inference and final event submission.
+For a physical CCTV camera, set `VIDEO_SOURCE` to its reachable RTSP/HTTP URL
+instead of the MediaMTX path. Browser playback is a separate concern because
+web browsers cannot play RTSP directly; MediaMTX's HLS or WebRTC ports can be
+used for a future live-preview component.
+
 ## Deployment requirement
 
 Machine credentials must be transmitted over TLS. Reverse-proxy TLS and

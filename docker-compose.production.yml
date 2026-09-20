@@ -28,7 +28,7 @@ services:
 
   frontend:
     build:
-      context: ${FRONTEND_CONTEXT:-../Smart-Facility-Platform-main-integrated}
+      context: ${FRONTEND_CONTEXT:-./frontend}
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: /api/v1
@@ -39,7 +39,10 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      # 127.0.0.1, not localhost: the container resolves localhost to ::1
+      # first and nginx listens only on 0.0.0.0:8080, so the IPv6 attempt
+      # is refused and the service never becomes healthy.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 15s
       timeout: 5s
       retries: 5
