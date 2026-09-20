@@ -41,6 +41,7 @@ explicitly stated otherwise.
 5. **Domain Engines**
    - [`ai-engine.md`](./ai-engine.md) — YOLO/OpenCV pipeline, detection → alert → incident
    - [`camera-processing.md`](./camera-processing.md) — RTSP ingestion, frame capture, recordings
+   - [`ai-detector-services.md`](./ai-detector-services.md) — running the detectors as containers, tuning decisions, measurements
    - [`notifications.md`](./notifications.md) — independent Channels live events and durable recipient notifications
    - [`reporting.md`](./reporting.md) — PDF/Excel generation architecture
    - [`project-workflows.md`](./project-workflows.md) — construction → facility conversion, maintenance workflow, incident workflow
