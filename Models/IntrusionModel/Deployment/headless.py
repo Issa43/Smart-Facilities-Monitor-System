@@ -39,10 +39,8 @@ from stream_server import StreamServer
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-# ONNX by default: ~4.6x faster than the .pt on CPU at the same resolution
-# and numerically equivalent. Point MODEL_PATH at yolo26n.pt to go back to
-# PyTorch (needed if you switch this service to the GPU).
-MODEL_PATH = os.environ.get("MODEL_PATH", "").strip() or str(PROJECT_DIR / "yolo26n.onnx")
+ONNX_WEIGHTS = PROJECT_DIR / "yolo26n.onnx"
+TORCH_WEIGHTS = PROJECT_DIR / "yolo26n.pt"
 TRACKER_CFG = os.environ.get("TRACKER_CFG", "").strip() or str(
     PROJECT_DIR / "bytetrack_sfms.yaml"
 )
@@ -57,6 +55,21 @@ def resolve_device():
     if not override:
         return 0
     return int(override) if override.isdigit() else override
+
+
+def resolve_model(device):
+    """Pick the weights that match the device unless told otherwise.
+
+    The two sensible configurations are ONNX Runtime on CPU and PyTorch on
+    CUDA. Mixing them is a silent trap: this image installs plain
+    onnxruntime, whose only execution provider is CPU, so asking for
+    DETECTOR_DEVICE=0 while pointing at the .onnx graph would quietly keep
+    running on the CPU while looking like it had moved to the GPU.
+    """
+    override = os.environ.get("MODEL_PATH", "").strip()
+    if override:
+        return override
+    return str(TORCH_WEIGHTS if device != "cpu" else ONNX_WEIGHTS)
 
 
 def parse_zone(raw):
@@ -87,10 +100,11 @@ class IntrusionRunner:
         self.max_runtime = float(os.environ.get("MAX_RUNTIME_SECONDS", "0") or 0)
         self.configured_zone = parse_zone(os.environ.get("INTRUSION_ZONE"))
         self.device = resolve_device()
+        self.model_path = resolve_model(self.device)
 
         # task= is required for .onnx: unlike a .pt, the file carries no
         # record of what the model was trained to do.
-        self.model = YOLO(MODEL_PATH, task="detect")
+        self.model = YOLO(self.model_path, task="detect")
         self.client = SflmsIngestionClient()
         self.stream = StreamServer(
             port=int(os.environ.get("STREAM_PORT", "8090"))
@@ -105,7 +119,7 @@ class IntrusionRunner:
         self.frame = None
         self.first_seen = {}
 
-        print(f"[intrusion] model={MODEL_PATH} device={self.device}", flush=True)
+        print(f"[intrusion] model={self.model_path} device={self.device}", flush=True)
         print(
             f"[intrusion] source={self.video_source} loop={self.loop_video}", flush=True
         )
