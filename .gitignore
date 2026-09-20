@@ -255,3 +255,7 @@ npm-debug.log*
 yarn-error.log*
 playwright-report/
 test-results/
+
+# Stray working copy of an earlier frontend checkout. Its src/lib files are
+# duplicates of frontend/src/lib; the real dashboard is frontend/.
+/Smart-Facility-Platform-main_Front_End/

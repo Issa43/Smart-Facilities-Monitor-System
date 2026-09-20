@@ -1,0 +1,26 @@
+# Shell scripts run inside Linux containers and MUST keep LF endings.
+# Without this, core.autocrlf=true on Windows checks them out with CRLF and
+# the container dies at startup with: set: Illegal option -
+*.sh            text eol=lf
+*.bash          text eol=lf
+
+# Consumed by Linux tooling inside the build
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+.dockerignore   text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# Binary assets - never line-ending converted
+*.pt     binary
+*.pth    binary
+*.mp4    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.ico    binary
+*.pdf    binary
+*.xlsx   binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
