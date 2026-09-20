@@ -181,7 +181,11 @@ export function parseSecurityRealtimeMessage(value: unknown): SecurityRealtimeMe
 }
 
 function websocketUrl(): string {
-  const url = new URL(API_BASE_URL)
+  // API_BASE_URL may be relative (e.g. "/api/v1") when the app is served by the
+  // container's nginx on the same origin as the API. The single-argument URL
+  // constructor throws on a relative input, so resolve against the page origin.
+  const origin = typeof window !== 'undefined' ? window.location.origin : undefined
+  const url = new URL(API_BASE_URL, origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.pathname = '/ws/security/events/'
   url.search = ''

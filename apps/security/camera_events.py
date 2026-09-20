@@ -3,6 +3,7 @@ from pathlib import PurePosixPath
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from apps.attachments.storage import get_protected_storage
 from apps.audit.services import record_audit
@@ -11,6 +12,7 @@ from apps.notifications.push import create_security_alert_notifications
 from .configuration import currently_authorized_vehicle
 from .machine_credentials import camera_for_ingestion, can_ingest_camera_event
 from .models import (
+    Camera,
     CameraEvent,
     CameraROI,
     SecurityAlert,
@@ -280,6 +282,15 @@ def create_camera_event(*, credential, source_event_id, camera_id, data):
             # The database uniqueness constraint is the race-safe idempotency gate.
             event.full_clean(validate_unique=False, validate_constraints=False)
             event.save()
+            # A camera that just delivered an accepted event is
+            # demonstrably reachable. last_seen_at is indexed and shown in
+            # the security-officer camera list, but nothing wrote it, so
+            # every camera read as never-seen. Use a queryset update so
+            # this cannot trip model validation or clobber a concurrent
+            # edit to other camera fields.
+            Camera.objects.filter(pk=camera.pk).update(
+                last_seen_at=timezone.now()
+            )
             if _event_is_alertable(event_data):
                 _create_security_alert(event)
             record_audit(
