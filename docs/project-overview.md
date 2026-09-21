@@ -1,7 +1,7 @@
 # Project Overview
 
 ## Purpose
-Gives any new reader (human or Claude session) a complete, non-technical
+Gives any new reader a complete, non-technical
 understanding of what SFLMS is, who uses it, and why it exists, before any
 architectural or code-level document is read.
 
