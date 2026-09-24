@@ -85,8 +85,11 @@ services:
       SFLMS_SECRET: ${SFLMS_SECRET:-}
       SFLMS_CAMERA_ID: ${SFLMS_CAMERA_ID:-}
       SFLMS_FACILITY_ID: ${SFLMS_FACILITY_ID:-}
-      SFLMS_ROI_ID: ${SFLMS_ROI_ID:-}
       SFLMS_PROTECTED_MEDIA_ROOT: /app/protected_media
+      # How often the detector re-reads its camera's settings from the admin
+      # console (is the fire_smoke model switched on). Fire and smoke are
+      # watched across the whole frame, so there is no ROI here.
+      CONFIG_REFRESH_SECONDS: ${CONFIG_REFRESH_SECONDS:-30}
       # The Windows host publishes its laptop webcam to MediaMTX. Override this
       # with a real CCTV RTSP/HTTP URL when needed.
       VIDEO_SOURCE: ${VIDEO_SOURCE:-rtsp://mediamtx:8554/laptop}
@@ -95,7 +98,6 @@ services:
       # MediaMTX does not publish, so the session dies after a few seconds.
       # OpenCV has no API for this; it only reads this FFmpeg env var.
       OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
-      DETECTOR_ROI: ${DETECTOR_ROI:-}
       MAX_RUNTIME_SECONDS: ${MAX_RUNTIME_SECONDS:-0}
       # config.py sets DEVICE=0 (CUDA device 0). Override with 'cpu' on a
       # host without an NVIDIA GPU, or the model load will fail.
@@ -120,16 +122,21 @@ services:
       #
       # On the test set at this confidence, Fire runs ~0.73 precision and
       # Smoke ~0.83, so Fire emits the noisier per-frame signal and needs
-      # MORE corroboration, not less. config.py ships the opposite split
-      # (Fire 3 / Smoke 4) with no stated derivation; it gives the weaker
-      # class the weaker filter. Smoke also precedes fire, so it is the
+      # MORE corroboration, not less. Smoke also precedes fire, so it is the
       # earlier warning and should not be the slower one to trip.
       #
       # At FRAME_SKIP=5 on an ~18fps stream these are ~1.1s (Smoke) and
       # ~1.4s (Fire) of sustained detection.
       FIRE_ALERT_FRAMES: ${FIRE_ALERT_FRAMES:-4}
       SMOKE_ALERT_FRAMES: ${SMOKE_ALERT_FRAMES:-3}
-      COOLDOWN_SECONDS: ${COOLDOWN_SECONDS:-30}
+      # Checks older than this leave the window, so an alert never combines
+      # checks from before and after a stream outage.
+      WINDOW_MAX_AGE_SECONDS: ${WINDOW_MAX_AGE_SECONDS:-10}
+      # One alert per incident, then a reminder every 5 minutes while the
+      # fire is still seen. The incident closes after 30 s without a
+      # detection; a fire seen after that is a new incident and a new alert.
+      ALERT_REMINDER_SECONDS: ${ALERT_REMINDER_SECONDS:-300}
+      INCIDENT_CLEAR_SECONDS: ${INCIDENT_CLEAR_SECONDS:-30}
     # The dashboard embeds the detector's annotated MJPEG feed directly
     # (VITE_CAMERA_STREAM_URL defaults to http://localhost:8090/stream), so the
     # stream port must be published or the live view breaks when the detector
@@ -173,13 +180,13 @@ services:
       SFLMS_SECRET: ${INTRUSION_SECRET:-}
       SFLMS_CAMERA_ID: ${INTRUSION_CAMERA_ID:-}
       SFLMS_FACILITY_ID: ${SFLMS_FACILITY_ID:-}
-      SFLMS_ROI_ID: ${INTRUSION_ROI_ID:-}
       SFLMS_PROTECTED_MEDIA_ROOT: /app/protected_media
+      # The intrusion zones are the ROIs the admin draws for this camera, and
+      # the model is switched on and off there too; both are re-read this often.
+      CONFIG_REFRESH_SECONDS: ${CONFIG_REFRESH_SECONDS:-30}
       VIDEO_SOURCE: ${INTRUSION_VIDEO_SOURCE:-rtsp://mediamtx:8554/laptop}
       VIDEO_LOOP: ${INTRUSION_VIDEO_LOOP:-1}
       OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
-      # Zone polygon in pixels, "x1,y1 x2,y2 ..."; empty = whole frame.
-      INTRUSION_ZONE: ${INTRUSION_ZONE:-}
       # 1280 is the measured default (8.7 -> 16.1 persons/frame vs 640).
       #
       # MUST match the size the ONNX model was exported at: the export uses

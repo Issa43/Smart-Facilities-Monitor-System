@@ -3,9 +3,9 @@
 Turns an AlertManager decision into a CameraEvent on the SFLMS backend.
 
 The backend contract (api/v1/camera_events) is strict for fire_alert and
-smoke_alert: every field in TRACKED_DETECTION_FIELDS must be present and
-non-null, `class` must be exactly "fire" or "smoke", and `snapshot_path`
-must already exist in protected storage under
+smoke_alert: the tracked-detection fields must be present and non-null, `class`
+must be exactly "fire" or "smoke", and `snapshot_path` must already exist in
+protected storage under
 
     security/camera-events/<facility_id>/<camera_id>/<stem>.jpg
 
@@ -55,7 +55,6 @@ class SflmsConfig:
         self.secret = _require("SFLMS_SECRET")
         self.camera_id = _require("SFLMS_CAMERA_ID")
         self.facility_id = _require("SFLMS_FACILITY_ID")
-        self.roi_id = _require("SFLMS_ROI_ID")
         self.protected_root = Path(
             os.environ.get("SFLMS_PROTECTED_MEDIA_ROOT", "/app/protected_media")
         )
@@ -112,7 +111,8 @@ class SflmsIngestionClient:
         return {
             "event_type": event_type,
             "camera_id": self.config.camera_id,
-            "roi_id": self.config.roi_id,
+            # No roi_id: fire and smoke are reported wherever they appear in
+            # the frame, and the backend treats the ROI as optional for them.
             "source_event_id": str(uuid.uuid4()),
             # The fire/smoke pipeline votes over a sliding window rather than
             # tracking objects, so there is no real track to reference. A fresh

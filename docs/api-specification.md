@@ -259,11 +259,20 @@ POST requiredness is event-specific:
 
 | Event | Required final-event fields beyond `event_type` |
 |---|---|
-| `fire_alert` | `camera_id`, `source_event_id`, `roi_id`, `track_id`, `class=fire`, `confidence`, `bbox`, `detected_at`, `confirmed_at`, `duration_seconds`, `snapshot_path` |
-| `smoke_alert` | `camera_id`, `source_event_id`, `roi_id`, `track_id`, `class=smoke`, `confidence`, `bbox`, `detected_at`, `confirmed_at`, `duration_seconds`, `snapshot_path` |
+| `fire_alert` | `camera_id`, `source_event_id`, `track_id`, `class=fire`, `confidence`, `bbox`, `detected_at`, `confirmed_at`, `duration_seconds`, `snapshot_path` |
+| `smoke_alert` | `camera_id`, `source_event_id`, `track_id`, `class=smoke`, `confidence`, `bbox`, `detected_at`, `confirmed_at`, `duration_seconds`, `snapshot_path` |
 | `intrusion_alert` | `camera_id`, `source_event_id`, `roi_id`, `track_id`, `class=person`, `confidence`, `bbox`, `entered_roi_at`, `confirmed_at`, `duration_seconds`, `time_restricted=true`, `snapshot_path` |
 | `vehicle_entry` / `vehicle_exit` | `camera_id`, `source_event_id`, `track_id`, `plate_number`, `plate_confidence`, `ocr_confidence`, `vehicle_type`, `vehicle_confidence`, matching `direction`, `crossing_centroid`, `authorized`, `bbox_plate`, `bbox_vehicle`, `detected_at`, `snapshot_path`; an active camera VirtualLine is required and authorization is derived and verified against the server registry |
 | `tamper_alert` | `camera_id`, `source_event_id`, `tamper_type`, `detected_at`, `confidence`; `snapshot_path` is optional |
+
+Fire and smoke cover the whole camera frame, so `roi_id` is optional for them
+(accepted when sent); intrusion still requires the ROI the person entered.
+
+Every event type is accepted only while its AI model is switched on for the
+camera (`fire_alert`/`smoke_alert` → `fire_smoke`, `intrusion_alert` →
+`intrusion`, vehicle events → `anpr`, `tamper_alert` → `tamper`); otherwise the
+POST is rejected with 400 on `event_type`. A retry of an event that was already
+accepted keeps returning it, even if the model has since been switched off.
 
 PATCH accepts only `confidence`, `bbox`, `duration_seconds`, `confirmed_at`, and
 `snapshot_path`. Snapshot values are private storage-relative keys under

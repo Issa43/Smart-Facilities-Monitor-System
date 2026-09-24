@@ -54,7 +54,6 @@ class SflmsConfig:
         self.secret = _require("SFLMS_SECRET")
         self.camera_id = _require("SFLMS_CAMERA_ID")
         self.facility_id = _require("SFLMS_FACILITY_ID")
-        self.roi_id = _require("SFLMS_ROI_ID")
         self.protected_root = Path(
             os.environ.get("SFLMS_PROTECTED_MEDIA_ROOT", "/app/protected_media")
         )
@@ -104,7 +103,7 @@ class SflmsIngestionClient:
     # -- payload --------------------------------------------------------
 
     def build_payload(self, *, class_name, confidence, bbox, first_seen, confirmed_at,
-                      snapshot_key, track_id, entered_roi_at):
+                      snapshot_key, track_id, entered_roi_at, roi_id):
         object_class = class_name.lower()
         event_type = CLASS_TO_EVENT_TYPE[object_class]
         x1, y1, x2, y2 = (max(0, int(value)) for value in bbox)
@@ -112,7 +111,8 @@ class SflmsIngestionClient:
         return {
             "event_type": event_type,
             "camera_id": self.config.camera_id,
-            "roi_id": self.config.roi_id,
+            # The ROI the person was standing in, as drawn by the admin.
+            "roi_id": roi_id,
             "source_event_id": str(uuid.uuid4()),
             # Unlike the fire/smoke pipeline, this one really does track
             # objects, so the ByteTrack id is a genuine reference: every event
@@ -192,7 +192,7 @@ class SflmsIngestionClient:
     # -- public ---------------------------------------------------------
 
     def send_alert(self, *, frame, class_name, confidence, bbox, first_seen, confirmed_at,
-                   track_id, entered_roi_at=None):
+                   track_id, roi_id, entered_roi_at=None):
         stem = f"{class_name.lower()}-{confirmed_at.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
         try:
             snapshot_key = self._write_snapshot(frame, stem)
@@ -208,6 +208,7 @@ class SflmsIngestionClient:
             snapshot_key=snapshot_key,
             track_id=track_id,
             entered_roi_at=entered_roi_at,
+            roi_id=roi_id,
         )
         try:
             self.queue.put_nowait(payload)

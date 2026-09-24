@@ -7,14 +7,18 @@ camera, republishes its annotated frames as MJPEG. That is also how a real CCTV
 deployment behaves: the camera is a stream source and the dashboard is a viewer.
 
 Serves:
-    GET /stream   multipart/x-mixed-replace MJPEG, viewable in an <img>
-    GET /snapshot single JPEG of the latest frame
-    GET /healthz  plain-text ok
+    GET /stream        multipart/x-mixed-replace MJPEG, viewable in an <img>
+    GET /snapshot      single JPEG of the latest annotated frame
+    GET /snapshot/raw  single JPEG of the latest camera frame, without overlays;
+                       the admin console draws ROIs on it
+    GET /info          JSON describing the detector (camera id, model)
+    GET /healthz       plain-text ok
 
 Only the most recent frame is kept. A slow or stalled viewer therefore skips
 frames instead of applying backpressure to the detection loop.
 """
 
+import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -30,10 +34,11 @@ class FrameBuffer:
     def __init__(self):
         self._condition = threading.Condition()
         self._jpeg = None
+        self._raw = None
         self._sequence = 0
         self._closed = False
 
-    def publish(self, frame, quality=80):
+    def publish(self, frame, raw=None, quality=80):
         encoded, buffer = cv2.imencode(
             ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality]
         )
@@ -41,12 +46,24 @@ class FrameBuffer:
             return
         with self._condition:
             self._jpeg = buffer.tobytes()
+            # Kept as an array and encoded only when asked for: raw snapshots
+            # are rare (an admin drawing an ROI), frames are not.
+            if raw is not None:
+                self._raw = raw
             self._sequence += 1
             self._condition.notify_all()
 
     def latest(self):
         with self._condition:
             return self._jpeg
+
+    def latest_raw(self):
+        with self._condition:
+            raw = self._raw
+        if raw is None:
+            return None
+        encoded, buffer = cv2.imencode(".jpg", raw, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        return buffer.tobytes() if encoded else None
 
     def wait_for_next(self, last_sequence, timeout=5.0):
         """Block until a frame newer than last_sequence exists."""
@@ -65,7 +82,7 @@ class FrameBuffer:
             self._condition.notify_all()
 
 
-def build_handler(buffer):
+def build_handler(buffer, info):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"
 
@@ -87,8 +104,8 @@ def build_handler(buffer):
                 self._cors()
                 self.end_headers()
                 self.wfile.write(body)
-            elif path == "/snapshot":
-                jpeg = buffer.latest()
+            elif path in ("/snapshot", "/snapshot/raw"):
+                jpeg = buffer.latest() if path == "/snapshot" else buffer.latest_raw()
                 if jpeg is None:
                     self.send_error(503, "No frame yet")
                     return
@@ -99,6 +116,15 @@ def build_handler(buffer):
                 self._cors()
                 self.end_headers()
                 self.wfile.write(jpeg)
+            elif path == "/info":
+                body = json.dumps(info).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self._cors()
+                self.end_headers()
+                self.wfile.write(body)
             elif path in ("/stream", "/"):
                 self._serve_stream()
             else:
@@ -133,9 +159,11 @@ def build_handler(buffer):
 
 
 class StreamServer:
-    def __init__(self, host="0.0.0.0", port=8090):
+    def __init__(self, host="0.0.0.0", port=8090, info=None):
         self.buffer = FrameBuffer()
-        self._server = ThreadingHTTPServer((host, port), build_handler(self.buffer))
+        self._server = ThreadingHTTPServer(
+            (host, port), build_handler(self.buffer, info or {})
+        )
         self._server.daemon_threads = True
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self.port = port
@@ -144,8 +172,8 @@ class StreamServer:
         self._thread.start()
         return self
 
-    def publish(self, frame):
-        self.buffer.publish(frame)
+    def publish(self, frame, raw=None):
+        self.buffer.publish(frame, raw)
 
     def close(self):
         self.buffer.close()

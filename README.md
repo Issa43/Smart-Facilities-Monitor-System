@@ -114,8 +114,8 @@ Detection alone isn't enough for either use case — both pipelines add tracking
 | --- | --- |
 | **Detect** | YOLO26m fire/smoke detection at 640 px, run on every 5th frame, at a confidence threshold of `0.378`, chosen from the test-set F1 curve. |
 | **ROI filter** | Optional region of interest — a detection counts only when its box center falls inside the selected region. |
-| **Confirm** | An alert fires only after enough positive checks inside a rolling window (currently **3 of 6** for Fire, **4 of 6** for Smoke), preventing single-frame false alarms. |
-| **Cooldown** | Per-class cooldown (15s) so one ongoing event doesn't spam repeated alerts. |
+| **Confirm** | An alert fires only after enough positive checks inside a rolling window (currently **4 of 6** for Fire, **3 of 6** for Smoke), preventing single-frame false alarms. |
+| **Incidents** | One alert per incident, with a reminder every 5 minutes while it continues; the incident closes after 30 s without a detection. |
 | **Deliver** | Threaded capture always serves the newest frame instead of stale buffered ones, and alerts are POSTed asynchronously so network latency never blocks detection. |
 
 Details: [Fire & Smoke Deployment README](Models/SmokeAndFireModel/Deployment/README.md).

@@ -10,13 +10,17 @@ MJPEG preview the dashboard embeds, backend delivery, and reconnection.
 Environment:
     VIDEO_SOURCE      path or RTSP/HTTP URL of the stream to analyse
     VIDEO_LOOP        "1" to reopen the source when it ends (default 1)
-    INTRUSION_ZONE    zone polygon as "x1,y1 x2,y2 ..." in pixels;
-                      empty means the whole frame
     DETECTOR_DEVICE   "cpu" or a CUDA index (default 0)
     STREAM_PORT       MJPEG preview port (default 8090)
     MAX_RUNTIME_SECONDS  stop after N seconds; 0 disables
 
     plus the SFLMS_* ingestion variables read by sflms_client.py.
+
+The intrusion zones are the ROIs the admin draws for this camera in the SFLMS
+console, and the model itself is switched on and off there per camera (see
+camera_settings.py). With no ROI drawn nothing can be an intrusion, so no
+alerts are raised; while the model is off the live view keeps running without
+inference.
 
 Unlike the fire/smoke detector this pipeline tracks objects, so ultralytics
 owns the capture loop (model.track(stream=True)): ByteTrack needs contiguous
@@ -30,10 +34,12 @@ import sys
 import time
 from pathlib import Path
 
+import cv2
 import numpy as np
 from ultralytics import YOLO
 
 import intrusion_core as core
+from camera_settings import CameraSettings
 from sflms_client import SflmsIngestionClient, utc_now
 from stream_server import StreamServer
 
@@ -72,18 +78,15 @@ def resolve_model(device):
     return str(TORCH_WEIGHTS if device != "cpu" else ONNX_WEIGHTS)
 
 
-def parse_zone(raw):
-    """Parse "x1,y1 x2,y2 ..." into a polygon, or None for the whole frame."""
-    raw = (raw or "").strip()
-    if not raw:
-        return None
-    points = []
-    for pair in raw.split():
-        x, _, y = pair.partition(",")
-        points.append([int(float(x)), int(float(y))])
-    if len(points) < 3:
-        raise SystemExit("INTRUSION_ZONE needs at least three x,y points.")
-    return np.array(points, dtype=np.int32)
+def zones_from(rois):
+    """Backend ROIs as (roi_id, label, polygon) for drawing and hit tests."""
+    zones = []
+    for roi in rois:
+        # cv2.putText draws only ASCII; an Arabic ROI name would come out as '?'.
+        label = roi["name"] if roi["name"].isascii() else "ROI"
+        polygon = np.array(roi["polygon"], dtype=np.int32)
+        zones.append((roi["id"], label, polygon))
+    return zones
 
 
 class IntrusionRunner:
@@ -98,7 +101,6 @@ class IntrusionRunner:
             )
         self.loop_video = os.environ.get("VIDEO_LOOP", "1").strip() != "0"
         self.max_runtime = float(os.environ.get("MAX_RUNTIME_SECONDS", "0") or 0)
-        self.configured_zone = parse_zone(os.environ.get("INTRUSION_ZONE"))
         self.device = resolve_device()
         self.model_path = resolve_model(self.device)
 
@@ -106,9 +108,15 @@ class IntrusionRunner:
         # record of what the model was trained to do.
         self.model = YOLO(self.model_path, task="detect")
         self.client = SflmsIngestionClient()
-        self.stream = StreamServer(
-            port=int(os.environ.get("STREAM_PORT", "8090"))
+        self.settings = CameraSettings(
+            self.client.config, "intrusion", with_rois=True
         ).start()
+        self.stream = StreamServer(
+            port=int(os.environ.get("STREAM_PORT", "8090")),
+            info={"camera_id": self.client.config.camera_id, "model": "intrusion"},
+        ).start()
+        self.zones = []
+        self._zones_source = None
 
         self.stopping = False
         self.started = time.monotonic()
@@ -130,8 +138,18 @@ class IntrusionRunner:
 
     # -- alerting -------------------------------------------------------
 
+    def roi_containing(self, point):
+        for roi_id, _, polygon in self.zones:
+            if core.is_inside_zone(point, polygon):
+                return roi_id
+        return None
+
     def on_alert(self, person_no, point, track_id, xyxy, conf, entered_at=None):
         if self.frame is None or xyxy is None:
+            return
+        roi_id = self.roi_containing(point)
+        if roi_id is None:
+            # The ROI was removed between the dwell starting and confirming.
             return
         now = utc_now()
         self.alert_count += 1
@@ -148,6 +166,7 @@ class IntrusionRunner:
             confirmed_at=now,
             track_id=track_id,
             entered_roi_at=entered_at,
+            roi_id=roi_id,
         )
 
     # -- one pass over the source ---------------------------------------
@@ -174,7 +193,6 @@ class IntrusionRunner:
             stale_frames=round(core.STALE_TRACK_TIMEOUT_S * eff_fps),
             on_alert=self.on_alert,
         )
-        zone_polygon = self.configured_zone
         night_mode = None
         frame_idx = 0
         saw_frame = False
@@ -187,17 +205,17 @@ class IntrusionRunner:
                 self.stopping = True
                 break
 
+            if not self.settings.model_enabled:
+                # Switched off in the admin console: stop inferring. run()
+                # takes over with the plain live view.
+                break
+
             frame_idx += 1
             saw_frame = True
             self.frame = result.orig_img.copy()
-
-            if zone_polygon is None:
-                h, w = self.frame.shape[:2]
-                zone_polygon = core.full_frame_polygon(w, h)
-                print(
-                    f"[intrusion] zone = full frame ({w}x{h}) @ {src_fps:g} fps",
-                    flush=True,
-                )
+            if self.settings.rois is not self._zones_source:
+                self._zones_source = self.settings.rois
+                self.zones = zones_from(self.settings.rois)
 
             dark = core.frame_is_dark(self.frame)
             active_conf = core.CONF_NIGHT if dark else core.CONF_DAY
@@ -218,7 +236,7 @@ class IntrusionRunner:
                         continue
                     track_id = int(track_id)
                     point = core.foot_point(xyxy, self.frame.shape)
-                    inside = core.is_inside_zone(point, zone_polygon)
+                    inside = self.roi_containing(point) is not None
                     self.first_seen.setdefault(track_id, utc_now())
                     state.update(track_id, inside, point, frame_idx, xyxy, det_conf)
                     boxes_info.append((
@@ -234,21 +252,59 @@ class IntrusionRunner:
             for gone in set(self.first_seen) - set(state.last_seen):
                 self.first_seen.pop(gone, None)
 
-            annotated = core.draw_overlay(self.frame.copy(), zone_polygon, boxes_info)
-            inside_n = sum(1 for box in boxes_info if box[2])
-            annotated = core.draw_hud(
-                annotated,
-                f"SFLMS intrusion | persons {len(boxes_info)} | "
-                f"inside {inside_n} | alerts {self.alert_count}",
+            annotated = core.draw_overlay(
+                self.frame.copy(),
+                [(label, polygon) for _, label, polygon in self.zones],
+                boxes_info,
             )
-            self.stream.publish(annotated)
+            inside_n = sum(1 for box in boxes_info if box[2])
+            hud = (
+                f"SFLMS intrusion | persons {len(boxes_info)} | "
+                f"inside {inside_n} | alerts {self.alert_count}"
+                if self.zones
+                else "SFLMS intrusion | no ROI drawn for this camera"
+            )
+            annotated = core.draw_hud(annotated, hud)
+            self.stream.publish(annotated, raw=self.frame)
 
         return saw_frame
+
+    # -- model switched off ---------------------------------------------
+
+    def run_paused(self):
+        """Keep the live view (and ROI drawing) going while the model is off."""
+        print("[intrusion] model disabled for this camera, streaming only", flush=True)
+        is_file = "://" not in self.video_source
+        capture = cv2.VideoCapture(self.video_source)
+        fps = capture.get(cv2.CAP_PROP_FPS) if is_file else 0
+        interval = 1 / fps if fps and fps > 0 else 0
+        try:
+            while not self.stopping and not self.settings.model_enabled:
+                if self.max_runtime and time.monotonic() - self.started > self.max_runtime:
+                    self.stopping = True
+                    break
+                ok, frame = capture.read()
+                if not ok:
+                    capture.release()
+                    time.sleep(RESTART_BACKOFF_SECONDS)
+                    capture = cv2.VideoCapture(self.video_source)
+                    continue
+                hud = core.draw_hud(
+                    frame.copy(), "SFLMS intrusion | model disabled for this camera"
+                )
+                self.stream.publish(hud, raw=frame)
+                if interval:
+                    time.sleep(interval)
+        finally:
+            capture.release()
 
     # -- service loop ---------------------------------------------------
 
     def run(self):
         while not self.stopping:
+            if not self.settings.model_enabled:
+                self.run_paused()
+                continue
             try:
                 saw_frame = self.run_pass()
             except (ConnectionError, OSError) as error:
@@ -265,6 +321,8 @@ class IntrusionRunner:
 
             if self.stopping:
                 break
+            if not self.settings.model_enabled:
+                continue
             if not self.loop_video:
                 print("[intrusion] stream ended", flush=True)
                 break
@@ -273,6 +331,7 @@ class IntrusionRunner:
                 time.sleep(RESTART_BACKOFF_SECONDS)
 
     def close(self):
+        self.settings.close()
         self.stream.close()
         self.client.close()
 

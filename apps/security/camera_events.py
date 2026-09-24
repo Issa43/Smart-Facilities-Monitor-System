@@ -13,6 +13,7 @@ from .configuration import currently_authorized_vehicle
 from .machine_credentials import camera_for_ingestion, can_ingest_camera_event
 from .models import (
     Camera,
+    CameraAIModel,
     CameraEvent,
     CameraROI,
     SecurityAlert,
@@ -22,6 +23,17 @@ from .models import (
 from .realtime import schedule_camera_event_created_broadcast
 
 
+# The AI model that produces each event type. An event is accepted only while
+# that model is switched on for the camera, so turning a model off in the
+# admin console stops its alerts even if a detector has not noticed yet.
+MODEL_BY_EVENT = {
+    CameraEvent.EventType.FIRE_ALERT: CameraAIModel.ModelIdentifier.FIRE_SMOKE,
+    CameraEvent.EventType.SMOKE_ALERT: CameraAIModel.ModelIdentifier.FIRE_SMOKE,
+    CameraEvent.EventType.INTRUSION_ALERT: CameraAIModel.ModelIdentifier.INTRUSION,
+    CameraEvent.EventType.VEHICLE_ENTRY: CameraAIModel.ModelIdentifier.ANPR,
+    CameraEvent.EventType.VEHICLE_EXIT: CameraAIModel.ModelIdentifier.ANPR,
+    CameraEvent.EventType.TAMPER_ALERT: CameraAIModel.ModelIdentifier.TAMPER,
+}
 ALERT_TYPE_BY_EVENT = {
     CameraEvent.EventType.FIRE_ALERT: SecurityAlert.AlertType.FIRE,
     CameraEvent.EventType.SMOKE_ALERT: SecurityAlert.AlertType.SMOKE,
@@ -253,6 +265,17 @@ def create_camera_event(*, credential, source_event_id, camera_id, data):
     )
     if existing is not None:
         return existing, False
+    model_identifier = MODEL_BY_EVENT[data["event_type"]]
+    if not CameraAIModel.objects.filter(
+        camera=camera, model_identifier=model_identifier
+    ).exists():
+        raise ValidationError(
+            {
+                "event_type": (
+                    f"The {model_identifier} model is not enabled for this camera."
+                )
+            }
+        )
     if data["event_type"] in {
         CameraEvent.EventType.VEHICLE_ENTRY,
         CameraEvent.EventType.VEHICLE_EXIT,

@@ -6,7 +6,7 @@
 
 [![YOLO](https://img.shields.io/badge/Ultralytics-YOLO-00FFFF?style=for-the-badge)](https://ultralytics.com/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-Video-5C3EE8?style=for-the-badge&logo=opencv)](https://opencv.org/)
-[![Status](https://img.shields.io/badge/Docker-Postponed-lightgrey?style=for-the-badge)]()
+[![Docker](https://img.shields.io/badge/Docker-Service-2496ED?style=for-the-badge&logo=docker)](../../../docs/ai-detector-services.md)
 
 </div>
 
@@ -14,19 +14,25 @@
 
 ## 📌 Overview
 
-This project detects fire and smoke from a camera or video source using a trained Ultralytics YOLO model. The current implementation is split into focused modules:
+This project detects fire and smoke from a camera or video source using a trained Ultralytics YOLO model. It runs in two ways:
+
+- **Service (`headless.py`)** — the Docker container used by SFLMS. No window: it watches the whole frame, sends confirmed alerts to the backend, serves a live MJPEG view, and follows the per-camera model switch from the admin console. How to run it is in [`docs/ai-detector-services.md`](../../../docs/ai-detector-services.md).
+- **Local demo (`Main.py`)** — an OpenCV window for testing on a laptop, with an optional hand-drawn ROI.
 
 | Module | Responsibility |
 | --- | --- |
-| `Main.py` | Application entry point — imports and calls `main()` from `local_test.py`. |
-| `local_test.py` | Current local OpenCV runtime: ROI selection, display, FPS, and orchestration. Kept for local testing until the Docker production entry point is created. |
-| `detector.py` | YOLO inference and ROI filtering. |
-| `video_source.py` | Threaded video capture that keeps the latest frame. |
-| `alert_manager.py` | Temporal confirmation and cooldown logic. |
-| `notifier.py` | Asynchronous HTTP alert delivery. |
+| `headless.py` | Service entry point (the container's `CMD`). |
+| `sflms_client.py` | Writes the alert snapshot to protected media and posts the event to the SFLMS ingestion API. |
+| `camera_settings.py` | Polls the backend every `CONFIG_REFRESH_SECONDS` (30 s) for whether the `fire_smoke` model is switched on for this camera. |
+| `stream_server.py` | MJPEG live view: `/stream`, `/snapshot`, `/snapshot/raw` (no overlays), `/info` (the camera it watches). |
+| `Main.py` | Local demo entry point — calls `main()` from `local_test.py`. |
+| `local_test.py` | Local OpenCV runtime: ROI selection, display, FPS, and orchestration. |
+| `detector.py` | YOLO inference, with optional ROI filtering for the local demo. |
+| `video_source.py` | Threaded video capture that keeps the latest frame; video files play at their own frame rate. |
+| `alert_manager.py` | Temporal confirmation and incident/reminder logic, shared by both runtimes. |
+| `verify_alert_logic.py` | Checks the window, incident and evidence rules without a camera or model (`python verify_alert_logic.py`). |
+| `notifier.py` | Asynchronous HTTP alert delivery for the local demo. |
 | `config.py` | Model, source, threshold, and timing configuration. |
-
-> 🐳 **Docker deployment is intentionally postponed.** The current runtime uses an interactive OpenCV window and a local camera, so Docker will require a separate decision about GUI, camera-device access, and GPU access.
 
 ---
 
@@ -48,8 +54,10 @@ CONF_THRESHOLD = 0.378
 IMAGE_SIZE = 640
 WINDOW_SIZE = 6
 
-ALERT_THRESHOLD = {'Fire': 3, 'Smoke': 4}
-COOLDOWN_SECONDS = 15
+ALERT_THRESHOLD = {'Fire': 4, 'Smoke': 3}
+WINDOW_MAX_AGE_SECONDS = 10
+ALERT_REMINDER_SECONDS = 300
+INCIDENT_CLEAR_SECONDS = 30
 ```
 
 | Parameter | Meaning |
@@ -63,13 +71,29 @@ COOLDOWN_SECONDS = 15
 | `IMAGE_SIZE` | YOLO inference input size — affects inference speed and detection detail, not the OpenCV display size. `416`, `640`, `768` are commonly used. |
 | `WINDOW_SIZE` | Number of inference checks used by the alert manager. |
 | `ALERT_THRESHOLD` | Required positive checks for each class. |
-| `COOLDOWN_SECONDS` | Minimum time between alerts for the same class. |
+| `WINDOW_MAX_AGE_SECONDS` | Checks older than this leave the window, so it never spans a stream outage. |
+| `ALERT_REMINDER_SECONDS` | Interval between reminders while an incident stays open. |
+| `INCIDENT_CLEAR_SECONDS` | Time without a detection after which an incident closes. |
 
 > 💡 For the current Quadro M2200, `IMAGE_SIZE = 640` is the current setting. A smaller value such as `416` can improve speed, while `1024` may improve detection of very small objects but is considerably more expensive.
+
+The tuning values can be overridden with environment variables of the same name — `FRAME_SKIP`, `WINDOW_SIZE`, `CONF_THRESHOLD`, `WINDOW_MAX_AGE_SECONDS`, `ALERT_REMINDER_SECONDS`, `INCIDENT_CLEAR_SECONDS` — and `FIRE_ALERT_FRAMES` / `SMOKE_ALERT_FRAMES` for `ALERT_THRESHOLD`. The service takes them from `docker-compose.override.yml`, with the same defaults as above.
 
 ---
 
 ## 🔄 Runtime Flow
+
+### Service (`headless.py`)
+
+1. Load the model, start the MJPEG server, and read the camera's settings from the backend (then again every 30 s in the background).
+2. Read the latest frame; on failure, release the source, wait 2 s and reopen it when `VIDEO_LOOP=1`.
+3. Frames between inferences go straight to the live view with the last known boxes.
+4. On every `FRAME_SKIP`-th frame: if the `fire_smoke` model is switched off for this camera, publish the frame with a "model disabled" label and raise nothing; otherwise run YOLO over the whole frame and publish the annotated frame.
+5. Feed the result to `AlertManager`. For each alert, build the snapshot from the best evidence frame and post it through `sflms_client.py`.
+
+The per-frame flow is drawn in `Diagrams/AI/ModelsPipeline/FireAndSmokePipelineV5.png`.
+
+### Local demo (`Main.py`)
 
 `Main.py` calls `local_test.main()`. The runtime follows this sequence:
 
@@ -92,6 +116,8 @@ COOLDOWN_SECONDS = 15
 
 On Windows, integer camera sources first use the DirectShow backend and fall back to OpenCV's default backend if necessary. Temporary read failures are retried before the source is marked as stopped.
 
+A video file is read at its own frame rate rather than as fast as it decodes, so a recording behaves like a live camera: the detection windows and incident timers see real-time spacing. Live sources (cameras, RTSP) are read as fast as they deliver.
+
 The display loop and YOLO inference have different rates:
 
 | Rate | Driven by |
@@ -105,6 +131,8 @@ The display loop and YOLO inference have different rates:
 ---
 
 ## 🎯 Detection & ROI
+
+The service always watches the **whole frame**: fire and smoke can start anywhere in view, so it has no ROI. ROIs in the admin console belong to the intrusion model. The ROI below exists only in the local demo.
 
 `Detector.detect()` runs YOLO with the configured confidence, device, and image size. Each result contains:
 
@@ -133,19 +161,24 @@ The ROI and detection boxes use the original camera-frame coordinates. `IMAGE_SI
 
 `AlertManager` keeps an independent history for `Fire` and `Smoke`. Each inference check adds a positive or negative result to the corresponding window. An alert is created when:
 
-- ✅ the window contains `WINDOW_SIZE` inference checks;
-- ✅ the positive count reaches the class threshold; **and**
-- ✅ the class cooldown has expired.
+- ✅ the window contains `WINDOW_SIZE` inference checks, none older than `WINDOW_MAX_AGE_SECONDS`; **and**
+- ✅ the positive count reaches the class threshold.
 
-With the current settings, an alert requires **at least 3 positive Fire checks** or **4 positive Smoke checks** within a **6-check window**.
+With the current settings, an alert requires **at least 4 positive Fire checks** or **3 positive Smoke checks** within a **6-check window**. Fire needs more because its per-frame precision is lower (~0.73 vs ~0.83), and smoke usually appears first, so it is the earlier warning.
 
-> The window is based on inference checks, not fixed seconds. Its real elapsed time changes when camera FPS, `FRAME_SKIP`, or inference speed changes.
+> The window is based on inference checks, not fixed seconds. Its real elapsed time changes when camera FPS, `FRAME_SKIP`, or inference speed changes; `WINDOW_MAX_AGE_SECONDS` only caps it.
+
+**Incidents.** The first confirmation opens an incident and raises one alert. While the class keeps being confirmed, a reminder is raised every `ALERT_REMINDER_SECONDS` (5 minutes). Once the class has gone undetected for `INCIDENT_CLEAR_SECONDS` (30 s), the incident closes, and the next confirmation is a new alert. Fire and Smoke have separate incidents.
+
+**Evidence.** Each positive check stores its frame and boxes in the same window. An alert uses the highest-confidence frame from the checks that confirmed it, draws every box of that class on the snapshot, and reports the strongest box as the event's `bbox`. Evidence older than the window cannot be sent.
 
 ---
 
 ## 📡 Notifications
 
-When `BACKEND_ALERT_URL` is configured, `AlertNotifier.send(alert)` places the alert in a queue. A background worker performs the HTTP `POST`, so network latency does not block the video-processing loop.
+**Service.** `sflms_client.py` writes the snapshot JPEG to the protected media volume shared with the backend, then posts a `fire_alert` or `smoke_alert` camera event with its AI key. Fire and smoke events carry no `roi_id`. The backend rejects the event if the `fire_smoke` model is switched off for the camera, so a switched-off model raises nothing even before the detector's next settings refresh.
+
+**Local demo.** When `BACKEND_ALERT_URL` is configured, `AlertNotifier.send(alert)` places the alert in a queue. A background worker performs the HTTP `POST`, so network latency does not block the video-processing loop.
 
 ```text
 Content-Type: application/json
@@ -179,7 +212,7 @@ The main loop uses `finally` to release the video source, close the notifier wor
 
 ## 🚀 Local Setup
 
-The current code expects Python packages including:
+The service's dependencies are pinned in `requirements.txt` (a CUDA build of `torch` for the Quadro M2200) and installed by the `Dockerfile`. The local demo needs a desktop OpenCV build, because the service image uses `opencv-python-headless`, which has no windows:
 
 ```text
 opencv-python
@@ -209,12 +242,8 @@ VIDEO_SOURCE = 'Videos/VID_20250610_173239.mp4'
 
 ## 🛣️ Current Limitations and Future Work
 
-- [ ] `Main.py` currently starts the local GUI implementation in `local_test.py`; a separate production `app.py` can be introduced during Dockerization.
-- [ ] The interactive ROI and OpenCV display require a graphical environment.
-- [ ] A Docker container will need explicit camera and NVIDIA GPU configuration.
-- [ ] A headless Docker deployment will need a replacement for `cv2.selectROI` and `cv2.imshow`.
-- [ ] The repository should later include dependency metadata such as `requirements.txt` and a proper `.gitignore`.
-- [ ] Alert timing may be changed from inference-check windows to a time-based policy if required.
-- [ ] ROI filtering may be changed from center-point filtering to intersection or overlap filtering if the application requires it.
-
-> These deployment changes are intentionally left for the Dockerization stage.
+- [ ] `/healthz` on the stream port always reports ok; it does not yet check that frames are still arriving.
+- [ ] The MJPEG live view has no authentication, so anyone on the network can watch it.
+- [ ] The thresholds come from test-set curves; they have not yet been checked against reviewed alerts from the real room.
+- [ ] `torchvision`, `ultralytics` and `opencv-python-headless` are not pinned in `requirements.txt`.
+- [ ] The local demo's ROI filter uses the box center; overlap filtering could be added if needed.

@@ -330,7 +330,8 @@ def draw_rounded_rect(img, x1, y1, x2, y2, color, thickness, radius):
         cv2.ellipse(img, (cx, cy), (r, r), ang, 0, 90, color, thickness, cv2.LINE_AA)
 
 
-def draw_overlay(frame, polygon, boxes_info):
+def draw_overlay(frame, zones, boxes_info):
+    """zones: list of (label, polygon) -- every ROI drawn for the camera."""
     h, w = frame.shape[:2]
     # الرسم يُقاس مع دقة الإطار: سماكة 2 بكسل تكاد لا تُرى على إطار 4K
     k = max(1.0, h / 720.0)
@@ -340,14 +341,15 @@ def draw_overlay(frame, polygon, boxes_info):
 
     # إزاحة نقاط الرسم للداخل فقط، وإلا اختفى نصف سماكة الخط خارج حدود الإطار
     m = max(ZONE_DRAW_MARGIN_PX, line_t // 2)
-    draw_poly = np.clip(polygon, [m, m], [w - 1 - m, h - 1 - m]).astype(np.int32)
-    cv2.polylines(frame, [draw_poly], isClosed=True, color=(255, 0, 0), thickness=line_t)
+    for label, polygon in zones:
+        draw_poly = np.clip(polygon, [m, m], [w - 1 - m, h - 1 - m]).astype(np.int32)
+        cv2.polylines(frame, [draw_poly], isClosed=True, color=(255, 0, 0), thickness=line_t)
 
-    # النص أسفل أول نقطة كي يبقى ظاهراً حتى لو كانت المنطقة ملاصقة لحافة الإطار
-    label_x, label_y = draw_poly[0]
-    cv2.putText(frame, "Intrusion Zone",
-                (int(label_x) + int(6 * k), int(label_y) + int(22 * k)),
-                cv2.FONT_HERSHEY_SIMPLEX, font_s, (255, 0, 0), line_t)
+        # النص أسفل أول نقطة كي يبقى ظاهراً حتى لو كانت المنطقة ملاصقة لحافة الإطار
+        label_x, label_y = draw_poly[0]
+        cv2.putText(frame, label,
+                    (int(label_x) + int(6 * k), int(label_y) + int(22 * k)),
+                    cv2.FONT_HERSHEY_SIMPLEX, font_s, (255, 0, 0), line_t)
 
     max_radius = BOX_CORNER_MAX_PX * k
     for track_id, point, inside, dwell, confirmed, xyxy in boxes_info:

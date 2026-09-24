@@ -39,7 +39,6 @@ fi
 export SFLMS_API_URL="${SFLMS_API_URL_HOST:-http://localhost:8000/api/v1/camera-events/}"
 export SFLMS_PROTECTED_MEDIA_ROOT="${SFLMS_PROTECTED_MEDIA_ROOT_HOST:-$REPO/protected_media}"
 export SFLMS_CAMERA_ID="${WEBCAM_CAMERA_ID:?WEBCAM_CAMERA_ID missing from .env}"
-export SFLMS_ROI_ID="${WEBCAM_ROI_ID:?WEBCAM_ROI_ID missing from .env}"
 export SFLMS_FACILITY_ID="${SFLMS_FACILITY_ID:?SFLMS_FACILITY_ID missing from .env}"
 
 # 0 is the built-in webcam. VIDEO_LOOP is irrelevant for a live device: the

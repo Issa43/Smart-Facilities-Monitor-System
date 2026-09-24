@@ -102,7 +102,10 @@ ANPR-enabled camera in its scope and omits responsible-person data.
 Configuration is current/future processing state. Disable is soft, and
 configuration changes never rewrite historical CameraEvents. A supplied
 `CameraEvent.roi_id` must resolve to an active ROI belonging to the event's
-authorized camera; tamper and vehicle events do not accept ROI.
+authorized camera; it is required for intrusion, optional for fire and smoke
+(which cover the whole frame), and not accepted for tamper and vehicle events.
+An event is accepted only while its model is active for the camera
+(`CameraAIModel`).
 
 The backend provides configuration and final-event ingestion contracts. AI
 inference remains external to Django.

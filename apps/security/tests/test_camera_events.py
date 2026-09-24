@@ -21,6 +21,7 @@ from apps.security.models import (
     AIIngestionCredential,
     AuthorizedVehicle,
     Camera,
+    CameraAIModel,
     CameraROI,
     CameraEvent,
     Incident,
@@ -48,6 +49,12 @@ def create_facility_camera(actor, suffix):
         status=Camera.Status.ONLINE,
         created_by=actor,
     )
+    # Events are accepted only for models switched on for the camera; these
+    # tests exercise the event contract, so every model is on.
+    for model_identifier in CameraAIModel.ModelIdentifier.values:
+        CameraAIModel.objects.create(
+            camera=camera, model_identifier=model_identifier, created_by=actor
+        )
     return facility, camera
 
 
@@ -269,6 +276,69 @@ def test_post_is_idempotent_and_conflicting_retry_is_409(api_client, event_conte
     ).count() == 1
 
 
+@pytest.mark.parametrize("event_type", ["fire_alert", "smoke_alert"])
+def test_fire_and_smoke_do_not_need_an_roi(api_client, event_context, event_type):
+    _, camera, credential, secret = event_context
+    payload = payload_for(camera, event_type)
+    payload.pop("roi_id")
+
+    response = api_client.post(
+        reverse("api_v1:camera-event-list"),
+        payload,
+        format="json",
+        **machine_headers(credential, secret),
+    )
+
+    assert response.status_code == 201, response.data
+    assert CameraEvent.objects.get(pk=response.data["id"]).roi_id is None
+
+
+@pytest.mark.parametrize(
+    "event_type,model_identifier",
+    [
+        ("fire_alert", "fire_smoke"),
+        ("smoke_alert", "fire_smoke"),
+        ("intrusion_alert", "intrusion"),
+        ("vehicle_entry", "anpr"),
+        ("tamper_alert", "tamper"),
+    ],
+)
+def test_events_from_a_switched_off_model_are_rejected(
+    api_client, event_context, event_type, model_identifier
+):
+    _, camera, credential, secret = event_context
+    CameraAIModel.objects.filter(
+        camera=camera, model_identifier=model_identifier
+    ).delete()
+
+    response = api_client.post(
+        reverse("api_v1:camera-event-list"),
+        payload_for(camera, event_type),
+        format="json",
+        **machine_headers(credential, secret),
+    )
+
+    assert response.status_code == 400
+    assert "event_type" in response.data["error"]["details"]
+    assert CameraEvent.objects.count() == 0
+
+
+def test_retry_of_accepted_event_survives_the_model_being_switched_off(
+    api_client, event_context
+):
+    _, camera, credential, secret = event_context
+    payload = payload_for(camera, "fire_alert")
+    url = reverse("api_v1:camera-event-list")
+    first = api_client.post(url, payload, format="json", **machine_headers(credential, secret))
+    CameraAIModel.objects.filter(camera=camera, model_identifier="fire_smoke").delete()
+
+    retry = api_client.post(url, payload, format="json", **machine_headers(credential, secret))
+
+    assert first.status_code == 201
+    assert retry.status_code == 200
+    assert retry.data["id"] == first.data["id"]
+
+
 @pytest.mark.parametrize(
     "header",
     [None, "AIKey malformed", "AIKey missing:wrong", "Bearer not-a-jwt"],
@@ -400,7 +470,6 @@ def test_machine_cannot_supply_server_owned_or_future_fields(
         (
             CameraEvent.EventType.FIRE_ALERT,
             {
-                "roi_id",
                 "track_id",
                 "class",
                 "confidence",
@@ -413,7 +482,6 @@ def test_machine_cannot_supply_server_owned_or_future_fields(
         (
             CameraEvent.EventType.SMOKE_ALERT,
             {
-                "roi_id",
                 "track_id",
                 "class",
                 "confidence",

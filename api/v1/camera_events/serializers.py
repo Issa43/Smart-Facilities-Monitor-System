@@ -39,6 +39,9 @@ TRACKED_DETECTION_FIELDS = {
     "snapshot_path",
 }
 INTRUSION_REQUIRED_FIELDS = TRACKED_DETECTION_FIELDS | INTRUSION_FIELDS
+# Fire and smoke are reported wherever they appear in the frame, so unlike
+# intrusion they are not tied to an ROI; roi_id is accepted but optional.
+FIRE_SMOKE_REQUIRED_FIELDS = TRACKED_DETECTION_FIELDS - {"roi_id"}
 VEHICLE_REQUIRED_FIELDS = {
     "track_id",
     "plate_number",
@@ -256,7 +259,7 @@ class CameraEventCreateSerializer(StrictInputSerializer):
             CameraEvent.EventType.FIRE_ALERT,
             CameraEvent.EventType.SMOKE_ALERT,
         }:
-            require_non_null_fields(attrs, TRACKED_DETECTION_FIELDS, errors)
+            require_non_null_fields(attrs, FIRE_SMOKE_REQUIRED_FIELDS, errors)
 
         is_vehicle = event_type in {
             CameraEvent.EventType.VEHICLE_ENTRY,

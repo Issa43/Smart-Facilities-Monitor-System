@@ -35,7 +35,8 @@ def _common(event_type):
 def _tracked(event_type, object_class, *, intrusion=False):
     fields = {
         **_common(event_type),
-        "roi_id": serializers.UUIDField(),
+        # Fire and smoke cover the whole frame; only intrusion needs an ROI.
+        "roi_id": serializers.UUIDField(required=intrusion),
         "track_id": serializers.CharField(max_length=255),
         "class": serializers.ChoiceField(choices=[object_class]),
         "confidence": _confidence(),

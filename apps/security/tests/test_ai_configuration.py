@@ -169,6 +169,9 @@ def test_camera_event_accepts_only_active_roi_for_its_authorized_camera(
 ):
     _, camera_a = make_camera(super_admin_user, "event-roi-a")
     _, camera_b = make_camera(super_admin_user, "event-roi-b")
+    CameraAIModel.objects.create(
+        camera=camera_a, model_identifier="fire_smoke", created_by=super_admin_user
+    )
     credential, secret = make_machine(super_admin_user, [camera_a])
     valid_roi = make_roi(camera_a, super_admin_user, "valid")
     foreign_roi = make_roi(camera_b, super_admin_user, "foreign")

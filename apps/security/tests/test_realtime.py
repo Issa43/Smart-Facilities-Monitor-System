@@ -17,7 +17,7 @@ from apps.facilities.models import Facility, FacilityAssignment
 from apps.notifications.models import Notification
 from apps.security.camera_events import CameraEventConflict, create_camera_event, update_camera_event
 from apps.security.machine_credentials import create_ai_ingestion_credential
-from apps.security.models import Camera, CameraEvent, SecurityAlert
+from apps.security.models import Camera, CameraAIModel, CameraEvent, SecurityAlert
 from apps.security.realtime import (
     broadcast_camera_event_created,
     camera_event_created_contract,
@@ -63,6 +63,11 @@ def make_camera(actor, suffix):
         status=Camera.Status.ONLINE,
         created_by=actor,
     )
+    # Events are accepted only for models switched on for the camera.
+    for model_identifier in CameraAIModel.ModelIdentifier.values:
+        CameraAIModel.objects.create(
+            camera=camera, model_identifier=model_identifier, created_by=actor
+        )
     return facility, camera
 
 

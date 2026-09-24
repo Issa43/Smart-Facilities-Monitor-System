@@ -90,6 +90,19 @@ first.
 | intrusion | 8091 | MJPEG preview, distinct host port |
 | mediamtx | 8554 | RTSP relay |
 
+To test without a camera, put a video in the detector's `samples/` folder
+(gitignored, mounted at `/samples`) and point the source at it. Files play at
+their own frame rate, not as fast as they decode, and loop when `VIDEO_LOOP=1`:
+
+```powershell
+$env:VIDEO_SOURCE="/samples/<fire video>.mp4"            # fire / smoke
+$env:INTRUSION_VIDEO_SOURCE="/samples/<people video>.mp4"  # intrusion
+docker compose --profile detector --profile intrusion up -d
+```
+
+From Git Bash, prefix the command with `MSYS_NO_PATHCONV=1`, or it rewrites
+`/samples/...` into a Windows path and the detector cannot open the file.
+
 Each detector needs its **own machine credential and camera id**, so events
 attribute correctly and one can be revoked without touching the others. Every
 detector must also mount `./protected_media`: snapshots do not travel over
@@ -110,13 +123,18 @@ storage.
 | `CONF_THRESHOLD` | 0.378 | same (F1-optimal) |
 | `WINDOW_SIZE` | 6 | same |
 | `FRAME_SKIP` | 5 | same |
-| `ALERT_THRESHOLD` | Fire 4 / Smoke 3 | **flipped** (was 3 / 4) |
-| `COOLDOWN_SECONDS` | 30 | changed (was 15) |
+| `ALERT_THRESHOLD` | Fire 4 / Smoke 3 | same |
+| `WINDOW_MAX_AGE_SECONDS` | 10 | same |
+| `ALERT_REMINDER_SECONDS` | 300 | same |
+| `INCIDENT_CLEAR_SECONDS` | 30 | same |
 
 A detection counts at conf ≥ 0.378. Inference runs on every 5th frame
 (~3.6/s on a ~18 fps stream); the last 6 checks form a rolling ~1.7 s window.
-Fire alerts at 4 of 6, smoke at 3 of 6. After firing, that class is silent for
-30 s.
+Fire alerts at 4 of 6, smoke at 3 of 6. Checks older than 10 s leave the
+window, so a window never spans a stream outage. Each class raises one alert
+per incident, then a reminder every 5 minutes while it is still confirmed; the
+incident closes after 30 s without a detection. The snapshot is the strongest
+frame from the confirming window, with every box of that class drawn on it.
 
 ### Why the threshold is the F1 point, not higher
 
@@ -152,16 +170,15 @@ signal is *less* reliable. Per class at 0.378 (same approximate reading):
 | Fire | ~0.73 | ~0.72 | 0.944 | 0.780 | 0.464 |
 | Smoke | ~0.83 | ~0.80 | 0.983 | 0.901 | 0.655 |
 
-Smoke is the better-detected class on both axes, yet `config.py` gives fire
-the *weakest* filter (3) and smoke the strongest (4) — with no derivation in
-the code, README or git history. Smoke also precedes fire, so making it the
-slower class to trip undercuts the earliest warning.
+Smoke is the better-detected class on both axes, so fire gets the stronger
+filter (4) and smoke the weaker (3). Smoke also precedes fire, so making it the
+slower class to trip would undercut the earliest warning. The original
+defaults were the reverse (3 / 4), with no derivation in the code, README or
+git history; `config.py` now ships 4 / 3 so local runs match the container.
 
-`config.py` keeps the original values as defaults so benchmark numbers stay
-reproducible; the deployment overrides live in `docker-compose.override.yml`
-with the reasoning beside them. Note `ALERT_THRESHOLD`, `WINDOW_SIZE` and
-`COOLDOWN_SECONDS` play **no part in `model.val()` metrics** — those are
-per-frame — so changing them cannot invalidate reported mAP/P/R.
+`ALERT_THRESHOLD`, `WINDOW_SIZE` and the incident timings play **no part in
+`model.val()` metrics** — those are per-frame — so changing them cannot
+invalidate reported mAP/P/R.
 
 ---
 
@@ -220,6 +237,47 @@ crosses into the zone, which is earlier than confirmation by the dwell time.
 `time_restricted` is hardcoded `true`: this detector treats its zone as always
 restricted. A deployment with a real schedule should check it and simply not
 report outside the restricted window.
+
+---
+
+## Admin control: model switch and ROIs
+
+Both detectors read their camera's settings from the backend at startup and
+every `CONFIG_REFRESH_SECONDS` (30 s) through `camera_settings.py`, using their
+own AI key: `GET /api/v1/cameras/<id>/active-models/` and, for intrusion,
+`GET /api/v1/roi/?camera_id=<id>`. If the backend is unreachable the last known
+settings stay in force.
+
+| | Fire / smoke | Intrusion |
+| --- | --- | --- |
+| Area watched | whole frame, no ROI | the ROIs the admin drew; none drawn = no alerts |
+| Model switched off | stops inferring, live view shows "model disabled" | same |
+| Event `roi_id` | not sent | the ROI the person was standing in |
+
+The admin draws ROIs in **Super Admin → AI camera configuration** by clicking
+points on the intrusion detector's live frame (`/snapshot/raw` on its stream
+port). `/info` on the same port names the camera the detector watches, so the
+page warns when the frame belongs to a different camera. The backend also
+rejects events from a switched-off model, so turning a model off takes effect
+immediately even before the detector's next refresh.
+
+---
+
+## Diagrams
+
+The fire / smoke diagrams live in `Diagrams/AI/ModelsPipeline/`, each as an
+editable `.drawio` file with a PNG export beside it.
+
+| Diagram | Shows |
+| --- | --- |
+| `FireAndSmokePipelineV5` | per-frame activity: sampling, model switch, YOLO26 preprocessing, inference, NMS, the sliding window and the incident / reminder logic |
+| `FireAndSmokeVideoDataFlow` | webcam → ffmpeg → MediaMTX → detector → MJPEG / backend |
+| `FireAndSmokeIncidentStates` | the per-class incident state machine |
+| `FireAlarmSequence` | one alarm from confirmation to the security officer, including rejection |
+| `AIServicesDeployment` | every container, its port and what it talks to |
+
+Update the matching diagram in the same change when the pipeline, the alert
+rules or the container layout change.
 
 ---
 
@@ -286,8 +344,7 @@ report outside the restricted window.
    `is_false_positive` unset, so every threshold decision above is reasoned
    from test-set curves rather than measured on the real room. Labelling ~20
    snapshots would settle whether fire really is the noisier class in practice,
-   and would justify updating `config.py` and its README table (which still
-   documents 3 / 4).
+   and whether Fire 4 / Smoke 3 should move.
 2. **Intrusion on GPU.** The fire detector uses only 534 MiB of 4096, so both
    fit — the earlier claim that they could not was an assumption, never
    measured. Expect ~15–30 fps against the current 2.3. Cost: rebuild against

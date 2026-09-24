@@ -27,6 +27,7 @@ import { Switch } from '@/components/ui/Controls/Controls'
 import { ErrorState, SkeletonLines, StateCard } from '@/components/ui/Feedback/Feedback'
 import { Panel } from '@/components/ui/Panel/Panel'
 import { Section, SplitGrid } from '@/components/ui/Display/Display'
+import { RoiDrawer } from '../RoiDrawer'
 
 const MODEL_LABELS: Record<CameraAiModelIdentifier, string> = {
   fire_smoke: 'الحريق والدخان',
@@ -35,17 +36,13 @@ const MODEL_LABELS: Record<CameraAiModelIdentifier, string> = {
   tamper: 'العبث بالكاميرا',
 }
 const MODEL_IDS = Object.keys(MODEL_LABELS) as CameraAiModelIdentifier[]
-const parsePoints = (value: string): PixelPoint[] => JSON.parse(value) as PixelPoint[]
 
 export function AdminAiCameraConfigurationPage() {
   const queryClient = useQueryClient()
   const { showToast } = useToast()
   const [cameraId, setCameraId] = useState('')
-  const [roi, setRoi] = useState({
-    identifier: '',
-    name: '',
-    polygon: '[{"x":0,"y":0},{"x":100,"y":0},{"x":0,"y":100}]',
-  })
+  const [roi, setRoi] = useState({ identifier: '', name: '' })
+  const [roiPoints, setRoiPoints] = useState<PixelPoint[]>([])
   const [line, setLine] = useState({ start: '{"x":0,"y":50}', end: '{"x":100,"y":50}' })
   const [vehicle, setVehicle] = useState({ plate: '', responsible: '', expires: '' })
   const [scheduleRoi, setScheduleRoi] = useState('')
@@ -96,15 +93,21 @@ export function AdminAiCameraConfigurationPage() {
         description: error.message,
       }),
   })
+  const roiFeedback = feedback('تمت إضافة ROI')
   const addRoi = useMutation({
     mutationFn: () =>
       createCameraRoi({
         camera: selectedCamera,
         identifier: roi.identifier.trim(),
         name: roi.name.trim(),
-        polygon: parsePoints(roi.polygon),
+        polygon: roiPoints,
       }),
-    ...feedback('تمت إضافة ROI'),
+    ...roiFeedback,
+    onSuccess: () => {
+      roiFeedback.onSuccess()
+      setRoi({ identifier: '', name: '' })
+      setRoiPoints([])
+    },
   })
   const addLine = useMutation({
     mutationFn: () =>
@@ -168,7 +171,7 @@ export function AdminAiCameraConfigurationPage() {
     <>
       <PageHeader
         title="تهيئة تكامل كاميرات الذكاء الاصطناعي"
-        description="إعدادات بشرية بإدارة Super Admin فقط. لا تتضمن استدلالاً أو مفاتيح آلة أو بث فيديو."
+        description="إعدادات بشرية بإدارة Super Admin فقط. تقرأها كواشف الذكاء الاصطناعي تلقائياً خلال 30 ثانية تقريباً."
       />
       <Section>
         <Panel title="الكاميرا">
@@ -180,7 +183,10 @@ export function AdminAiCameraConfigurationPage() {
             <select
               aria-label="الكاميرا"
               value={selectedCamera}
-              onChange={(event) => setCameraId(event.target.value)}
+              onChange={(event) => {
+                setCameraId(event.target.value)
+                setRoiPoints([])
+              }}
             >
               {cameras.data.map((camera) => (
                 <option key={camera.id} value={camera.id}>
@@ -196,7 +202,7 @@ export function AdminAiCameraConfigurationPage() {
           <Section>
             <Panel
               title="النماذج الفعالة"
-              subtitle="يضبط هذا عقد التكامل ولا يشغّل نموذجاً داخل SFLMS."
+              subtitle="تشغيل النموذج أو إيقافه على هذه الكاميرا. عند الإيقاف يتوقف الكاشف عن التحليل ويرفض الخادم تنبيهاته، ويبقى البث المباشر متاحاً."
             >
               <div style={{ display: 'grid', gap: 12 }}>
                 {MODEL_IDS.map((id) => (
@@ -213,8 +219,11 @@ export function AdminAiCameraConfigurationPage() {
               </div>
             </Panel>
           </Section>
-          <SplitGrid>
-            <Panel title="مناطق ROI">
+          <Section>
+            <Panel
+              title="مناطق ROI"
+              subtitle="مناطق التسلل: يستخدمها نموذج التسلل فقط، أما الحريق والدخان فيُراقَبان في الصورة كاملة. ارسم المنطقة بالنقر على صورة الكاميرا."
+            >
               <ConfigList
                 items={rois.data?.map((item) => ({
                   id: item.id,
@@ -226,8 +235,14 @@ export function AdminAiCameraConfigurationPage() {
               />
               <ConfigForm
                 onSubmit={() => addRoi.mutate()}
-                disabled={!roi.identifier.trim() || !roi.name.trim()}
+                disabled={!roi.identifier.trim() || !roi.name.trim() || roiPoints.length < 3}
               >
+                <RoiDrawer
+                  cameraId={selectedCamera}
+                  existing={(rois.data ?? []).filter((item) => item.isActive)}
+                  points={roiPoints}
+                  onChange={setRoiPoints}
+                />
                 <input
                   aria-label="معرّف ROI"
                   placeholder="identifier"
@@ -240,13 +255,10 @@ export function AdminAiCameraConfigurationPage() {
                   value={roi.name}
                   onChange={(event) => setRoi({ ...roi, name: event.target.value })}
                 />
-                <textarea
-                  aria-label="Polygon JSON"
-                  value={roi.polygon}
-                  onChange={(event) => setRoi({ ...roi, polygon: event.target.value })}
-                />
               </ConfigForm>
             </Panel>
+          </Section>
+          <SplitGrid>
             <Panel title="الخطوط الافتراضية">
               <ConfigList
                 items={lines.data?.map((item) => ({
