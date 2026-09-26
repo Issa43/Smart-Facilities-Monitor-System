@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>دعوة مناقشة مشروع التخرج — ستوري 9:16</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=El+Messiri:wght@600;700&family=Tajawal:wght@400;500;700;800&family=Cinzel:wght@500;600;700&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg-0: #050b17;
+    --bg-1: #0a1528;
+    --bg-2: #10213f;
+    --gold: #d9b46c;
+    --gold-hi: #f7e4b4;
+    --gold-lo: #9a7131;
+    --ink: #f2ecdf;
+    --muted: #a9b3c7;
+    --line: rgba(217, 180, 108, .38);
+    --line-soft: rgba(217, 180, 108, .16);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #222; }
+
+  .poster {
+    position: relative; overflow: hidden;
+    width: 1200px; height: 1600px;
+    padding: 70px 120px 62px;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    color: var(--ink); font-family: 'Tajawal', sans-serif;
+    background:
+      radial-gradient(820px 520px at 50% -4%, rgba(217, 180, 108, .20), transparent 70%),
+      radial-gradient(900px 700px at 50% 58%, rgba(38, 76, 150, .22), transparent 70%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  }
+  .poster > * { position: relative; z-index: 1; }
+
+  /* Background layers */
+  .pattern, .skyline, .frame { position: absolute !important; pointer-events: none; z-index: 0 !important; }
+  .pattern { inset: 0; width: 100%; height: 100%; opacity: .06; }
+  .skyline { left: 0; bottom: 0; width: 100%; height: 260px; opacity: .13;
+    -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 95%);
+            mask-image: linear-gradient(to top, #000 10%, transparent 95%); }
+  .frame { inset: 32px; border: 1px solid var(--line); border-radius: 4px; }
+  .frame::after { content: ""; position: absolute; inset: 9px; border: 1px solid var(--line-soft); border-radius: 2px; }
+  .frame i { position: absolute; width: 16px; height: 16px; background: var(--bg-0);
+    border: 1.5px solid var(--gold); transform: rotate(45deg); }
+  .frame i:nth-child(1) { top: -9px; right: -9px; }
+  .frame i:nth-child(2) { top: -9px; left: -9px; }
+  .frame i:nth-child(3) { bottom: -9px; right: -9px; }
+  .frame i:nth-child(4) { bottom: -9px; left: -9px; }
+
+  .gold-text {
+    background: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold) 52%, var(--gold-lo) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  svg.ic { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5;
+    stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Heading */
+  .cap { width: 64px; height: 64px; color: var(--gold); }
+  .invite {
+    font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 150px; line-height: 1.05;
+    margin-top: -4px; padding: 0 20px;
+    filter: drop-shadow(0 6px 28px rgba(217, 180, 108, .28));
+  }
+  .occasion { font-weight: 800; font-size: 46px; margin-top: 2px; letter-spacing: -.3px; }
+  .divider { display: flex; align-items: center; gap: 14px; margin: 16px 0 12px; color: var(--gold); }
+  .divider span { width: 150px; height: 1px; background: linear-gradient(to left, transparent, var(--gold)); }
+  .divider span:last-child { background: linear-gradient(to right, transparent, var(--gold)); }
+  .divider b { width: 9px; height: 9px; background: var(--gold); transform: rotate(45deg); }
+  .intro { font-size: 27px; line-height: 1.65; color: var(--muted); max-width: 820px; }
+
+  /* Project card */
+  .project {
+    width: 100%; margin-top: 38px; padding: 40px 56px 28px;
+    border: 1px solid var(--line); border-radius: 26px;
+    background: linear-gradient(180deg, rgba(16, 33, 63, .78), rgba(8, 17, 33, .78));
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(247, 228, 180, .12);
+  }
+  .project .label {
+    position: absolute; top: -17px; left: 50%; transform: translateX(-50%);
+    padding: 4px 22px; font-size: 22px; font-weight: 500; color: var(--gold);
+    background: var(--bg-1); border: 1px solid var(--line); border-radius: 999px; white-space: nowrap;
+  }
+  .title { font-family: 'El Messiri', serif; font-weight: 700; font-size: 68px; line-height: 1.3; }
+  .tagline { font-size: 27px; color: var(--ink); opacity: .9; margin-top: 10px; }
+
+  .lifecycle { position: relative; display: flex; justify-content: space-between; margin: 26px 10px 0; }
+  .lifecycle::before { content: ""; position: absolute; top: 28px; right: 40px; left: 40px; height: 1px;
+    background: linear-gradient(to left, var(--gold-lo), var(--gold), var(--gold-lo)); }
+  .stage { position: relative; width: 120px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .stage .dot { width: 56px; height: 56px; padding: 13px; border-radius: 50%; color: var(--gold-hi);
+    background: var(--bg-2); border: 1.5px solid var(--gold); box-shadow: 0 0 0 6px rgba(217, 180, 108, .07); }
+  .stage b { font-size: 21px; font-weight: 700; }
+  .stage small { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 2.5px; color: var(--muted); margin-top: 2px; }
+
+  .brand { margin-top: 30px; }
+  .brand .mark { font-family: 'Cinzel', serif; font-weight: 600; font-size: 50px; letter-spacing: 26px;
+    margin-left: -26px; line-height: 1; }
+  .brand .full { font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 6px; color: var(--muted); margin-top: 12px; }
+
+  /* People */
+  .section-label { display: flex; align-items: center; justify-content: center; gap: 16px; color: var(--gold); font-size: 23px; font-weight: 500; }
+  .section-label::before, .section-label::after { content: ""; width: 120px; height: 1px; background: var(--line); }
+  .team { margin-top: 30px; width: 100%; }
+  .names { display: flex; justify-content: center; margin-top: 12px; }
+  .names div { flex: 1; font-size: 35px; font-weight: 700; padding: 4px 0; }
+  .names div + div { border-right: 1px solid var(--line); }
+  .supervisor { margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .supervisor .who { font-size: 36px; font-weight: 800; }
+
+  /* Details */
+  .details { display: flex; width: 100%; margin-top: 28px; padding: 20px 0;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .detail { flex: 1; display: flex; align-items: center; justify-content: center; gap: 18px; text-align: right; }
+  .detail + .detail { border-right: 1px solid var(--line-soft); }
+  .detail .icon { width: 58px; height: 58px; flex: none; padding: 14px; border-radius: 50%;
+    color: var(--gold); border: 1px solid var(--line); background: rgba(217, 180, 108, .06); }
+  .detail small { display: block; font-size: 19px; color: var(--gold); font-weight: 500; }
+  .detail strong { display: block; font-size: 26px; font-weight: 700; line-height: 1.35; }
+  .detail em { display: block; font-style: normal; font-size: 19px; color: var(--muted); }
+
+  /* Footer */
+  .footer { margin-top: auto; }
+  .motto { font-family: 'Cinzel', serif; display: flex; align-items: center; justify-content: center; gap: 18px; direction: ltr; }
+  .motto span { font-size: 15px; letter-spacing: 7px; color: var(--muted); }
+  .motto strong { font-size: 30px; font-weight: 600; letter-spacing: 12px; }
+  .closing { margin-top: 12px; font-size: 25px; line-height: 1.7; color: var(--ink); }
+  .closing span { color: var(--muted); font-size: 22px; }
+
+  /* 9:16 story overrides (WhatsApp status / Instagram story) */
+  .poster { width: 1080px; height: 1920px; padding: 150px 80px 150px; }
+  .skyline { height: 300px; }
+  .cap { width: 70px; height: 70px; }
+  .invite { font-size: 190px; }
+  .occasion { font-size: 52px; }
+  .divider { margin: 20px 0 16px; }
+  .intro { font-size: 31px; max-width: 700px; }
+  .project { margin-top: 56px; padding: 50px 40px 34px; }
+  .title { font-size: 76px; }
+  .tagline { font-size: 29px; }
+  .lifecycle { display: none; } /* keep the phone-sized version uncluttered */
+  .project { padding-bottom: 44px; }
+  .brand { margin-top: 44px; }
+  .brand .full { font-size: 13px; letter-spacing: 5px; }
+  .team { margin-top: 36px; }
+  .names div { font-size: 34px; }
+  .supervisor .who { font-size: 40px; }
+  .details { margin-top: 38px; padding: 28px 0; }
+  .footer { padding-top: 26px; }
+  .detail { flex-direction: column; gap: 8px; text-align: center; }
+  .detail strong { font-size: 27px; }
+</style>
+</head>
+<body>
+<main class="poster">
+  <svg class="pattern" aria-hidden="true">
+    <defs>
+      <pattern id="stars" width="84" height="84" patternUnits="userSpaceOnUse">
+        <g fill="none" stroke="#d9b46c" stroke-width="1">
+          <rect x="27" y="27" width="30" height="30"/>
+          <rect x="27" y="27" width="30" height="30" transform="rotate(45 42 42)"/>
+          <path d="M0 42h12M72 42h12M42 0v12M42 72v12"/>
+        </g>
+      </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#stars)"/>
+  </svg>
+  <svg class="skyline" viewBox="0 0 1200 300" preserveAspectRatio="none" aria-hidden="true">
+    <g fill="none" stroke="#d9b46c" stroke-width="1.4" id="skyline"></g>
+  </svg>
+  <div class="frame"><i></i><i></i><i></i><i></i></div>
+
+  <div class="cap"><svg class="ic" viewBox="0 0 24 24"><path d="M2 9.5 12 5l10 4.5L12 14 2 9.5Z"/><path d="M6 11.6V16c0 1.4 2.7 2.8 6 2.8s6-1.4 6-2.8v-4.4"/><path d="M22 9.5v5.5"/></svg></div>
+  <h1 class="invite gold-text">دعوة</h1>
+  <p class="occasion">لحضور مناقشة مشروع تخرّجنا</p>
+  <div class="divider"><span></span><b></b><span></span></div>
+  <p class="intro">يسرّنا دعوتكم لمشاركتنا عرض مشروعنا<br>ومناقشة ثمرة رحلتنا الأكاديمية</p>
+
+  <section class="project">
+    <span class="label">بعنوان المشروع</span>
+    <h2 class="title gold-text">نظام الإدارة الذكية<br>لدورة حياة المنشآت</h2>
+    <p class="tagline">نحو إدارة أكثر ذكاءً… لمستقبل منشآت أكثر كفاءة</p>
+
+    <div class="lifecycle">
+      <div class="stage"><div class="dot"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM8.5 11h7M8.5 15h5"/></svg></div><b>تخطيط</b><small>PLAN</small></div>
+      <div class="stage"><div class="dot"><svg class="ic" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div><b>تصميم</b><small>DESIGN</small></div>
+      <div class="stage"><div class="dot"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h1.5M13.5 7H15M9 11h1.5M13.5 11H15M9 15h1.5M13.5 15H15M10.5 21v-3h3v3"/></svg></div><b>تنفيذ</b><small>BUILD</small></div>
+      <div class="stage"><div class="dot"><svg class="ic" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div><b>تشغيل</b><small>OPERATE</small></div>
+      <div class="stage"><div class="dot"><svg class="ic" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div><b>صيانة</b><small>MAINTAIN</small></div>
+    </div>
+  </section>
+
+  <div class="brand" dir="ltr">
+    <div class="mark gold-text">SFLMS</div>
+    <div class="full">SMART FACILITY LIFECYCLE MANAGEMENT SYSTEM</div>
+  </div>
+
+  <section class="team">
+    <div class="section-label">إعداد الطلبة</div>
+    <div class="names">
+      <div>ديانا اليوسف</div>
+      <div>عيسى حسن</div>
+      <div>مارينا كوسى</div>
+    </div>
+    <div class="supervisor">
+      <div class="section-label">بإشراف</div>
+      <div class="who gold-text">د. محمد ديب</div>
+    </div>
+  </section>
+
+  <section class="details">
+    <div class="detail">
+      <div class="icon"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+      <div><small>التاريخ</small><strong><bdi dir="ltr">13 / 10 / 2026</bdi></strong><em>الثلاثاء</em></div>
+    </div>
+    <div class="detail">
+      <div class="icon"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+      <div><small>الساعة</small><strong>الواحدة ظهراً</strong><em><bdi dir="ltr">1:00 PM</bdi></em></div>
+    </div>
+    <div class="detail">
+      <div class="icon"><svg class="ic" viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+      <div><small>المكان</small><strong>سيمنار الأسنان</strong><em>جامعة الحواش الخاصة</em></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="motto"><span>BUILDING SMARTER</span><strong class="gold-text">TOMORROW</strong></div>
+    <p class="closing">بحضوركم يكتمل نجاحنا<br><span>ونتطلّع إلى أن نشارككم ثمرة جهدنا في هذا اليوم المميّز</span></p>
+  </footer>
+</main>
+<script>
+  // Line-art skyline: [x, width, height] per building, drawn from the baseline.
+  const towers = [[0,70,120],[78,54,190],[140,96,140],[244,62,240],[314,110,170],[432,70,120],[510,88,210],
+    [606,120,150],[734,64,250],[806,100,180],[914,58,130],[980,90,220],[1078,60,160],[1146,54,110]];
+  const g = document.getElementById('skyline');
+  const ns = 'http://www.w3.org/2000/svg';
+  for (const [x, w, h] of towers) {
+    const r = document.createElementNS(ns, 'rect');
+    Object.entries({ x, y: 300 - h, width: w, height: h }).forEach(([k, v]) => r.setAttribute(k, v));
+    g.appendChild(r);
+    for (let y = 300 - h + 18; y < 290; y += 22) {
+      const l = document.createElementNS(ns, 'path');
+      l.setAttribute('d', `M${x + 10} ${y}h${w - 20}`);
+      l.setAttribute('stroke-dasharray', '6 6');
+      l.setAttribute('opacity', '.6');
+      g.appendChild(l);
+    }
+  }
+</script>
+</body>
+</html>

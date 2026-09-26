@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1200">
+<title>دعوة مناقشة مشروع التخرج — عاجي وزمردي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=Amiri:wght@400;700&family=Tajawal:wght@400;500;700;800&family=Cinzel:wght@500;600&display=block" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f7f2e7;
+    --paper-2: #efe5d1;
+    --emerald: #0e3a36;
+    --emerald-2: #0a2b28;
+    --gold: #a9823f;
+    --gold-hi: #e9cf97;
+    --gold-soft: #c9a86a;
+    --ink: #1c2b2a;
+    --muted: #5f6a68;
+    --line: #d8c7a3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #ddd; }
+
+  .poster {
+    position: relative; overflow: hidden;
+    width: 1200px; height: 1600px; padding: 76px 110px 70px;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    color: var(--ink); font-family: 'Tajawal', sans-serif;
+    background:
+      radial-gradient(900px 700px at 50% 45%, #fbf8f1, transparent 75%),
+      linear-gradient(180deg, var(--paper), var(--paper-2));
+  }
+  .frame { position: absolute; inset: 34px; border: 1.5px solid var(--emerald); pointer-events: none; }
+  .frame::after { content: ""; position: absolute; inset: 8px; border: 1px solid var(--gold-soft); }
+  svg.ic { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .gold-text {
+    background: linear-gradient(180deg, #fbe9bf 0%, var(--gold-hi) 40%, #b88d45 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* Arch */
+  .arch {
+    position: relative; width: 700px; height: 620px; padding-top: 130px;
+    border-radius: 350px 350px 16px 16px; overflow: hidden; flex: none;
+    background: radial-gradient(420px 360px at 50% 35%, #15504a, transparent 80%), linear-gradient(180deg, var(--emerald), var(--emerald-2));
+    box-shadow: 0 30px 60px rgba(14, 58, 54, .22);
+    color: #f4ecdc;
+  }
+  .arch::before { content: ""; position: absolute; inset: 14px; border: 1px solid rgba(233, 207, 151, .55);
+    border-radius: 336px 336px 8px 8px; pointer-events: none; }
+  .arch > * { position: relative; }
+  .arch .pattern { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .09; }
+  .arch .skyline { position: absolute; left: 0; right: 0; bottom: 14px; width: 100%; height: 92px; opacity: .3; }
+  .cap { width: 56px; height: 56px; margin: 0 auto; color: var(--gold-hi); }
+  .invite { font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 150px; line-height: 1.05; margin-top: -8px;
+    filter: drop-shadow(0 6px 24px rgba(0, 0, 0, .25)); }
+  .occasion { font-size: 37px; font-weight: 700; margin-top: 0; }
+  .diamonds { display: flex; justify-content: center; gap: 10px; margin: 16px 0 12px; }
+  .diamonds b { width: 7px; height: 7px; background: var(--gold-hi); transform: rotate(45deg); opacity: .8; }
+  .diamonds b:nth-child(2) { opacity: 1; width: 9px; height: 9px; }
+  .intro { font-size: 22px; line-height: 1.7; color: rgba(244, 236, 220, .82); max-width: 470px; margin: 0 auto; }
+
+  /* Project */
+  .label { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 22px; font-weight: 500; color: var(--gold); }
+  .label::before, .label::after { content: ""; width: 90px; height: 1px; background: var(--line); }
+  .project { margin-top: 44px; }
+  .title { font-family: 'Amiri', serif; font-weight: 700; font-size: 72px; line-height: 1.38; color: var(--emerald); margin-top: 8px; }
+  .tagline { font-family: 'Amiri', serif; font-size: 28px; color: var(--gold); margin-top: 2px; }
+  .brand { margin-top: 18px; direction: ltr; font-family: 'Cinzel', serif; }
+  .brand b { display: block; font-weight: 600; font-size: 32px; letter-spacing: 16px; margin-left: -16px; color: var(--emerald); }
+  .brand small { display: block; font-size: 12px; letter-spacing: 5px; color: var(--muted); margin-top: 6px; }
+
+  /* People */
+  .people { display: flex; width: 100%; margin-top: 44px; padding: 30px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .people > div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+  .people > div + div { border-right: 1px solid var(--line); }
+  .people small { font-size: 20px; font-weight: 500; color: var(--gold); }
+  .people .names { display: flex; gap: 0; font-size: 29px; font-weight: 700; color: var(--ink); }
+  .people .names span + span::before { content: "◆"; font-size: 10px; color: var(--gold-soft); margin: 0 16px; vertical-align: middle; }
+  .people .sup { font-size: 32px; font-weight: 800; color: var(--emerald); }
+  .people .students { flex: 2.1; }
+
+  /* Details */
+  .details { display: flex; width: 100%; margin-top: 40px; }
+  .detail { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .detail + .detail { border-right: 1px solid var(--line); }
+  .detail .icon { width: 34px; height: 34px; color: var(--gold); margin-bottom: 4px; }
+  .detail small { font-size: 18px; color: var(--gold); font-weight: 500; }
+  .detail strong { font-size: 27px; font-weight: 700; color: var(--emerald); }
+  .detail em { font-style: normal; font-size: 19px; color: var(--muted); }
+
+  /* Footer */
+  .footer { margin-top: auto; }
+  .motto { font-family: 'Cinzel', serif; direction: ltr; font-size: 15px; letter-spacing: 8px; color: var(--muted); }
+  .motto b { color: var(--emerald); font-weight: 600; }
+  .closing { font-family: 'Amiri', serif; font-size: 30px; line-height: 1.6; color: var(--emerald); margin-top: 10px; }
+  .closing span { display: block; font-size: 24px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main class="poster">
+  <div class="frame"></div>
+
+  <section class="arch">
+    <svg class="pattern" aria-hidden="true">
+      <defs>
+        <pattern id="stars" width="70" height="70" patternUnits="userSpaceOnUse">
+          <g fill="none" stroke="#e9cf97" stroke-width="1">
+            <rect x="22" y="22" width="26" height="26"/>
+            <rect x="22" y="22" width="26" height="26" transform="rotate(45 35 35)"/>
+          </g>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#stars)"/>
+    </svg>
+    <svg class="skyline" viewBox="0 0 700 130" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+      <g fill="none" stroke="#e9cf97" stroke-width="1.3" id="skyline"></g>
+    </svg>
+    <div class="cap"><svg class="ic" viewBox="0 0 24 24"><path d="M2 9.5 12 5l10 4.5L12 14 2 9.5Z"/><path d="M6 11.6V16c0 1.4 2.7 2.8 6 2.8s6-1.4 6-2.8v-4.4"/><path d="M22 9.5v5.5"/></svg></div>
+    <h1 class="invite gold-text">دعوة</h1>
+    <p class="occasion">لحضور مناقشة مشروع تخرّجنا</p>
+    <div class="diamonds"><b></b><b></b><b></b></div>
+    <p class="intro">يسرّنا دعوتكم لمشاركتنا عرض مشروعنا<br>ومناقشة ثمرة رحلتنا الأكاديمية</p>
+  </section>
+
+  <section class="project">
+    <div class="label">بعنوان المشروع</div>
+    <h2 class="title">نظام الإدارة الذكية لدورة حياة المنشآت</h2>
+    <p class="tagline">نحو إدارة أكثر ذكاءً… لمستقبل منشآت أكثر كفاءة</p>
+    <div class="brand"><b>SFLMS</b><small>SMART FACILITY LIFECYCLE MANAGEMENT SYSTEM</small></div>
+  </section>
+
+  <section class="people">
+    <div class="students">
+      <small>إعداد الطلبة</small>
+      <div class="names"><span>ديانا اليوسف</span><span>عيسى حسن</span><span>مارينا كوسى</span></div>
+    </div>
+    <div>
+      <small>بإشراف</small>
+      <div class="sup">د. محمد ديب</div>
+    </div>
+  </section>
+
+  <section class="details">
+    <div class="detail">
+      <div class="icon"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+      <small>التاريخ</small><strong><bdi dir="ltr">13 / 10 / 2026</bdi></strong><em>الثلاثاء</em>
+    </div>
+    <div class="detail">
+      <div class="icon"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+      <small>الساعة</small><strong>الواحدة ظهراً</strong><em><bdi dir="ltr">1:00 PM</bdi></em>
+    </div>
+    <div class="detail">
+      <div class="icon"><svg class="ic" viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+      <small>المكان</small><strong>سيمنار الأسنان</strong><em>جامعة الحواش الخاصة</em>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="motto">BUILDING SMARTER <b>TOMORROW</b></div>
+    <p class="closing">بحضوركم يكتمل نجاحنا<span>ونتطلّع إلى أن نشارككم ثمرة جهدنا في هذا اليوم المميّز</span></p>
+  </footer>
+</main>
+<script>
+  // Line-art skyline along the bottom of the arch: [x, width, height] per building.
+  const towers = [[70,60,60],[136,48,95],[190,74,70],[270,56,120],[332,84,85],[422,50,110],[478,70,75],[554,52,95],[612,40,55]];
+  const g = document.getElementById('skyline');
+  const ns = 'http://www.w3.org/2000/svg';
+  g.appendChild(Object.assign(document.createElementNS(ns, 'path'), {}));
+  g.lastChild.setAttribute('d', 'M20 130H680');
+  for (const [x, w, h] of towers) {
+    const r = document.createElementNS(ns, 'rect');
+    Object.entries({ x, y: 130 - h, width: w, height: h }).forEach(([k, v]) => r.setAttribute(k, v));
+    g.appendChild(r);
+    for (let y = 130 - h + 14; y < 124; y += 16) {
+      const l = document.createElementNS(ns, 'path');
+      l.setAttribute('d', `M${x + 8} ${y}h${w - 16}`);
+      l.setAttribute('stroke-dasharray', '5 5');
+      l.setAttribute('opacity', '.6');
+      g.appendChild(l);
+    }
+  }
+</script>
+</body>
+</html>
