@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1200">
+<title>دعوة مناقشة مشروع التخرج — AI Vision</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@500;600;800&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06070c;
+    --text: #f5f7fb;
+    --muted: #9aa3b5;
+    --dim: #5d6576;
+    --cyan: #22d3ee;
+    --blue: #3b82f6;
+    --violet: #8b5cf6;
+    --pink: #e879f9;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #fb7185;
+    --card: rgba(18, 20, 32, .72);
+    --edge: rgba(255, 255, 255, .09);
+    --grad: linear-gradient(90deg, var(--cyan), var(--violet) 60%, var(--pink));
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #000; }
+
+  .poster {
+    position: relative; overflow: hidden;
+    width: 1200px; height: 1600px; padding: 54px 72px 50px;
+    display: flex; flex-direction: column;
+    color: var(--text); font-family: 'IBM Plex Sans Arabic', sans-serif;
+    background:
+      radial-gradient(620px 460px at 88% 6%, rgba(139, 92, 246, .30), transparent 70%),
+      radial-gradient(560px 480px at 6% 34%, rgba(34, 211, 238, .16), transparent 70%),
+      radial-gradient(700px 420px at 50% 104%, rgba(59, 130, 246, .20), transparent 70%),
+      var(--bg);
+  }
+  .poster > * { position: relative; z-index: 1; flex-shrink: 0; }
+  .grid, .grain { position: absolute !important; inset: 0; z-index: 0 !important; pointer-events: none; }
+  .grid {
+    background:
+      linear-gradient(rgba(255, 255, 255, .045) 1px, transparent 1px) 0 0 / 56px 56px,
+      linear-gradient(90deg, rgba(255, 255, 255, .045) 1px, transparent 1px) 0 0 / 56px 56px;
+    -webkit-mask-image: radial-gradient(900px 700px at 50% 30%, #000 20%, transparent 75%);
+            mask-image: radial-gradient(900px 700px at 50% 30%, #000 20%, transparent 75%);
+  }
+  .grain { opacity: .08; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+
+  .mono { font-family: 'JetBrains Mono', monospace; direction: ltr; unicode-bidi: isolate; }
+  .grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  svg.ic { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .glass {
+    border: 1px solid transparent; border-radius: 20px;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(140deg, rgba(255, 255, 255, .20), rgba(255, 255, 255, .04) 40%, rgba(139, 92, 246, .30)) border-box;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .35);
+  }
+
+  /* Top bar */
+  .topbar { display: flex; justify-content: space-between; align-items: center; }
+  .logo { display: flex; align-items: center; gap: 12px; font-family: 'Space Grotesk', sans-serif; direction: ltr; }
+  .logo .mark { width: 40px; height: 40px; padding: 8px; border-radius: 12px; color: #fff; background: var(--grad); }
+  .logo b { font-size: 22px; letter-spacing: 2px; }
+  .pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 999px;
+    font-size: 13px; letter-spacing: 2px; color: var(--muted); border: 1px solid var(--edge); background: rgba(255, 255, 255, .03); }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); }
+
+  /* Hero */
+  .hero { display: flex; align-items: center; gap: 36px; margin-top: 44px; }
+  .hero-text { flex: 1; }
+  .eyebrow { font-size: 15px; color: var(--cyan); }
+  .eyebrow span { color: var(--dim); }
+  .invite { display: flex; align-items: center; gap: 18px; font-family: 'Alexandria', sans-serif; font-weight: 800;
+    font-size: 150px; line-height: 1.12; letter-spacing: -2px; margin-top: 4px; }
+  .invite b { font-weight: 800; background: linear-gradient(180deg, #fff 35%, #c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .invite .cursor { width: 12px; height: 118px; border-radius: 3px; background: var(--cyan); box-shadow: 0 0 24px var(--cyan); margin-top: 10px; }
+  .occasion { font-family: 'Alexandria', sans-serif; font-weight: 600; font-size: 40px; line-height: 1.35; }
+  .intro { font-size: 23px; font-weight: 300; line-height: 1.75; color: var(--muted); margin-top: 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; margin-top: 34px; padding: 6px 14px; border-radius: 10px;
+    font-size: 18px; color: #c4b5fd; background: rgba(139, 92, 246, .12); border: 1px solid rgba(139, 92, 246, .35); }
+  .chip .mono { font-size: 12px; color: var(--muted); }
+  .title { font-family: 'Alexandria', sans-serif; font-weight: 800; font-size: 56px; line-height: 1.38; margin-top: 12px; letter-spacing: -.5px; }
+  .tagline { font-size: 22px; color: var(--muted); margin-top: 8px; }
+  .brand { font-family: 'Space Grotesk', sans-serif; font-size: 13px; letter-spacing: 3px; color: var(--dim); margin-top: 16px; direction: ltr; text-align: right; }
+  .brand b { color: var(--text); }
+
+  /* AI camera feed */
+  .feed { flex: 0 0 460px; height: 680px; position: relative; overflow: hidden; border-radius: 26px; padding: 0; }
+  .feed svg.scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hud { position: absolute; font-size: 12px; letter-spacing: 1.5px; color: rgba(245, 247, 251, .8); }
+  .hud.tl { top: 20px; left: 22px; display: flex; align-items: center; gap: 8px; }
+  .hud.tl i { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+  .hud.tr { top: 20px; right: 22px; color: var(--cyan); }
+  .hud.bl { bottom: 20px; left: 22px; }
+  .hud.br { bottom: 20px; right: 22px; color: var(--green); }
+  .bracket { position: absolute; width: 26px; height: 26px; border-color: rgba(255, 255, 255, .55); border-style: solid; }
+  .bracket.a { top: 52px; left: 18px; border-width: 2px 0 0 2px; } .bracket.b { top: 52px; right: 18px; border-width: 2px 2px 0 0; }
+  .bracket.c { bottom: 50px; left: 18px; border-width: 0 0 2px 2px; } .bracket.d { bottom: 50px; right: 18px; border-width: 0 2px 2px 0; }
+  .scan { position: absolute; left: 0; right: 0; top: 320px; height: 90px;
+    background: linear-gradient(180deg, transparent, rgba(34, 211, 238, .14)); border-bottom: 1px solid rgba(34, 211, 238, .8);
+    box-shadow: 0 8px 24px rgba(34, 211, 238, .25); }
+  .det { position: absolute; border: 1.6px solid var(--c); background: color-mix(in srgb, var(--c) 10%, transparent); border-radius: 3px; }
+  .det span { position: absolute; bottom: 100%; left: -1.6px; margin-bottom: 4px; padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: #0b0d14; background: var(--c); direction: ltr; }
+
+  /* Lifecycle */
+  .lifecycle { display: flex; align-items: center; margin-top: 48px; padding: 22px 18px; }
+  .stage { flex: 1; display: flex; align-items: center; gap: 12px; justify-content: center; }
+  .stage .ic-box { width: 44px; height: 44px; flex: none; padding: 10px; border-radius: 12px; color: var(--c);
+    background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+  .stage b { display: block; font-family: 'Alexandria', sans-serif; font-weight: 600; font-size: 20px; }
+  .stage small { display: block; font-size: 12px; color: var(--dim); margin-top: 2px; text-align: right; }
+  .arrow { color: var(--dim); font-size: 20px; }
+
+  /* People */
+  .people { display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 16px; row-gap: 12px; margin-top: 48px; }
+  .label { font-size: 17px; color: var(--muted); display: flex; align-items: center; gap: 12px; }
+  .label::after { content: ""; flex: 1; height: 1px; background: linear-gradient(to left, var(--edge), transparent); }
+  .label.students { grid-column: 1 / span 3; }
+  .person { display: flex; align-items: center; gap: 12px; padding: 20px 16px; white-space: nowrap; }
+  .avatar { width: 46px; height: 46px; flex: none; border-radius: 50%; display: grid; place-items: center;
+    font-family: 'Alexandria', sans-serif; font-size: 16px; font-weight: 600; background: linear-gradient(135deg, var(--cyan), var(--blue)); }
+  .person b { font-size: 23px; font-weight: 600; }
+  .person.sup .avatar { background: linear-gradient(135deg, var(--pink), var(--violet)); }
+  .person.sup { background:
+      linear-gradient(135deg, rgba(139, 92, 246, .20), rgba(18, 20, 32, .85)) padding-box,
+      linear-gradient(140deg, rgba(232, 121, 249, .55), rgba(139, 92, 246, .15)) border-box; }
+
+  /* Details */
+  .details { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; }
+  .card { display: flex; align-items: center; gap: 16px; padding: 26px 22px; }
+  .card .ic-box { width: 54px; height: 54px; flex: none; padding: 13px; border-radius: 14px; color: var(--cyan);
+    background: rgba(34, 211, 238, .10); border: 1px solid rgba(34, 211, 238, .30); }
+  .card small { display: block; font-size: 16px; color: var(--muted); }
+  .card strong { display: block; font-family: 'Alexandria', sans-serif; font-weight: 600; font-size: 25px; line-height: 1.4; }
+  .card em { display: block; font-style: normal; font-size: 16px; color: var(--cyan); }
+
+  /* Footer */
+  .footer { margin: auto 0; padding-top: 28px; text-align: center; }
+  .footer::before { content: ""; display: block; height: 1px; margin-bottom: 28px; background: linear-gradient(90deg, transparent, rgba(139, 92, 246, .5), rgba(34, 211, 238, .5), transparent); }
+  .stack { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; direction: ltr; }
+  .stack span { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted); padding: 5px 12px;
+    border-radius: 8px; border: 1px solid var(--edge); background: rgba(255, 255, 255, .03); }
+  .closing { margin-top: 20px; font-family: 'Alexandria', sans-serif; font-weight: 600; font-size: 26px; }
+  .closing span { display: block; font-family: 'IBM Plex Sans Arabic', sans-serif; font-weight: 300; font-size: 20px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+<main class="poster">
+  <div class="grid"></div>
+  <div class="grain"></div>
+
+  <header class="topbar">
+    <div class="logo">
+      <div class="mark"><svg class="ic" viewBox="0 0 24 24" style="stroke-width:2"><rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h1.5M13.5 7H15M9 11h1.5M13.5 11H15M10.5 21v-4h3v4"/><path d="M20.5 2.5v3M19 4h3" /></svg></div>
+      <b>SFLMS</b>
+    </div>
+    <div class="pill mono"><i></i>BUILDING SMARTER TOMORROW</div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-text">
+      <div class="eyebrow mono">~/sflms <span>$</span> graduation --defense</div>
+      <h1 class="invite"><b>دعوة</b><i class="cursor"></i></h1>
+      <p class="occasion">لحضور مناقشة مشروع تخرّجنا</p>
+      <p class="intro">يسرّنا دعوتكم لمشاركتنا عرض مشروعنا<br>ومناقشة ثمرة رحلتنا الأكاديمية</p>
+      <span class="chip">بعنوان المشروع <span class="mono">project.title</span></span>
+      <h2 class="title">نظام الإدارة الذكية<br><span class="grad-text">لدورة حياة المنشآت</span></h2>
+      <p class="tagline">نحو إدارة أكثر ذكاءً… لمستقبل منشآت أكثر كفاءة</p>
+      <div class="brand"><b>SFLMS</b> — SMART FACILITY LIFECYCLE MANAGEMENT SYSTEM</div>
+    </div>
+
+    <div class="feed glass">
+      <svg class="scene" viewBox="0 -20 460 680" aria-hidden="true">
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#0b0f1f"/><stop offset="1" stop-color="#070910"/>
+          </linearGradient>
+          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="blur8" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="8"/></filter>
+          <filter id="blur3" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+          <radialGradient id="fireGlow"><stop offset="0" stop-color="#fb923c" stop-opacity=".9"/><stop offset="1" stop-color="#fb7185" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect y="-20" width="460" height="680" fill="url(#sky)"/>
+        <g id="floor" stroke="#22d3ee" stroke-opacity=".16" stroke-width="1"></g>
+        <g id="city" filter="url(#glow)"></g>
+        <g id="fx"></g>
+      </svg>
+      <div class="scan"></div>
+      <div class="bracket a"></div><div class="bracket b"></div><div class="bracket c"></div><div class="bracket d"></div>
+      <div class="hud tl mono"><i></i>REC · CAM-01</div>
+      <div class="hud tr mono">YOLO26 · 30 FPS</div>
+      <div class="hud bl mono">2026-10-13 13:00:00</div>
+      <div class="hud br mono">● 3 OBJECTS</div>
+      <div class="det" style="--c: var(--amber); left: 302px; top: 238px; width: 96px; height: 130px;"><span>smoke 0.91</span></div>
+      <div class="det" style="--c: var(--red); left: 150px; top: 350px; width: 46px; height: 50px;"><span>fire 0.88</span></div>
+      <div class="det" style="--c: var(--green); left: 226px; top: 536px; width: 36px; height: 58px;"><span>person 0.97</span></div>
+    </div>
+  </section>
+
+  <section class="lifecycle glass">
+    <div class="stage" style="--c: #22d3ee"><div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM8.5 11h7M8.5 15h5"/></svg></div><div><b>تخطيط</b><small class="mono">plan()</small></div></div>
+    <span class="arrow">‹</span>
+    <div class="stage" style="--c: #38bdf8"><div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></div><div><b>تصميم</b><small class="mono">design()</small></div></div>
+    <span class="arrow">‹</span>
+    <div class="stage" style="--c: #60a5fa"><div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h1.5M13.5 7H15M9 11h1.5M13.5 11H15M9 15h1.5M13.5 15H15M10.5 21v-3h3v3"/></svg></div><div><b>تنفيذ</b><small class="mono">build()</small></div></div>
+    <span class="arrow">‹</span>
+    <div class="stage" style="--c: #a78bfa"><div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div><div><b>تشغيل</b><small class="mono">operate()</small></div></div>
+    <span class="arrow">‹</span>
+    <div class="stage" style="--c: #e879f9"><div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div><div><b>صيانة</b><small class="mono">maintain()</small></div></div>
+  </section>
+
+  <section class="people">
+    <div class="label students">إعداد الطلبة</div>
+    <div class="label">بإشراف</div>
+    <div class="person glass"><div class="avatar">دي</div><b>ديانا اليوسف</b></div>
+    <div class="person glass"><div class="avatar">عح</div><b>عيسى حسن</b></div>
+    <div class="person glass"><div class="avatar">مك</div><b>مارينا كوسى</b></div>
+    <div class="person glass sup"><div class="avatar">مد</div><b>د. محمد ديب</b></div>
+  </section>
+
+  <section class="details">
+    <div class="card glass">
+      <div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+      <div><small>التاريخ</small><strong><bdi dir="ltr">13 / 10 / 2026</bdi></strong><em>الثلاثاء</em></div>
+    </div>
+    <div class="card glass">
+      <div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+      <div><small>الساعة</small><strong>الواحدة ظهراً</strong><em><bdi dir="ltr">1:00 PM</bdi></em></div>
+    </div>
+    <div class="card glass">
+      <div class="ic-box"><svg class="ic" viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+      <div><small>المكان</small><strong>سيمنار الأسنان</strong><em>جامعة الحواش الخاصة</em></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="stack"><span>Python</span><span>Django</span><span>React</span><span>TypeScript</span><span>YOLO26</span><span>OpenCV</span><span>Celery</span><span>Redis</span><span>Docker</span></div>
+    <p class="closing">بحضوركم يكتمل نجاحنا<span>ونتطلّع إلى أن نشارككم ثمرة جهدنا في هذا اليوم المميّز</span></p>
+  </footer>
+</main>
+<script>
+  // Isometric wireframe city for the "camera feed". World (x, y, z) -> screen.
+  const ns = 'http://www.w3.org/2000/svg';
+  const O = { x: 243, y: 428 };
+  const P = (x, y, z = 0) => [O.x + (x - y) * 0.866, O.y + (x + y) * 0.5 - z];
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    parent.appendChild(e);
+    return e;
+  };
+  const poly = (pts) => pts.map((p) => p.join(',')).join(' ');
+
+  // Floor grid
+  const floor = document.getElementById('floor');
+  for (let i = -260; i <= 420; i += 40) {
+    el('line', { x1: P(i, -260)[0], y1: P(i, -260)[1], x2: P(i, 420)[0], y2: P(i, 420)[1] }, floor);
+    el('line', { x1: P(-260, i)[0], y1: P(-260, i)[1], x2: P(420, i)[0], y2: P(420, i)[1] }, floor);
+  }
+
+  // Towers: [x0, y0, x1, y1, height]; drawn back to front.
+  const towers = [[0, 0, 110, 110, 330], [-10, 140, 100, 230, 120], [140, 20, 230, 110, 180]];
+  const city = document.getElementById('city');
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+  for (const [x0, y0, x1, y1, h] of towers) {
+    const g = el('g', {}, city);
+    el('polygon', { points: poly([P(x1, y0), P(x1, y1), P(x1, y1, h), P(x1, y0, h)]), fill: '#0c1630', stroke: '#3b82f6', 'stroke-width': 1.2 }, g);
+    el('polygon', { points: poly([P(x0, y1), P(x1, y1), P(x1, y1, h), P(x0, y1, h)]), fill: '#120f2b', stroke: '#8b5cf6', 'stroke-width': 1.2 }, g);
+    el('polygon', { points: poly([P(x0, y0, h), P(x1, y0, h), P(x1, y1, h), P(x0, y1, h)]), fill: '#0f2a3a', stroke: '#22d3ee', 'stroke-width': 1.4 }, g);
+    // Curtain-wall floors and mullions, plus a few lit windows
+    for (let z = 18; z < h - 6; z += 18) {
+      el('line', { x1: P(x1, y0, z)[0], y1: P(x1, y0, z)[1], x2: P(x1, y1, z)[0], y2: P(x1, y1, z)[1], stroke: '#3b82f6', 'stroke-opacity': .35 }, g);
+      el('line', { x1: P(x0, y1, z)[0], y1: P(x0, y1, z)[1], x2: P(x1, y1, z)[0], y2: P(x1, y1, z)[1], stroke: '#8b5cf6', 'stroke-opacity': .35 }, g);
+      for (let t = 0; t < 4; t++) {
+        if (rnd() > .78) {
+          const a = y0 + (y1 - y0) * t / 4, b = a + (y1 - y0) / 4 - 4;
+          el('polygon', { points: poly([P(x1, a + 3, z - 15), P(x1, b, z - 15), P(x1, b, z - 3), P(x1, a + 3, z - 3)]), fill: '#22d3ee', 'fill-opacity': .45 }, g);
+        }
+        if (rnd() > .8) {
+          const a = x0 + (x1 - x0) * t / 4, b = a + (x1 - x0) / 4 - 4;
+          el('polygon', { points: poly([P(a + 3, y1, z - 15), P(b, y1, z - 15), P(b, y1, z - 3), P(a + 3, y1, z - 3)]), fill: '#a78bfa', 'fill-opacity': .45 }, g);
+        }
+      }
+    }
+    for (let s = 1; s < 4; s++) {
+      const y = y0 + (y1 - y0) * s / 4, x = x0 + (x1 - x0) * s / 4;
+      el('line', { x1: P(x1, y)[0], y1: P(x1, y)[1], x2: P(x1, y, h)[0], y2: P(x1, y, h)[1], stroke: '#3b82f6', 'stroke-opacity': .25 }, g);
+      el('line', { x1: P(x, y1)[0], y1: P(x, y1)[1], x2: P(x, y1, h)[0], y2: P(x, y1, h)[1], stroke: '#8b5cf6', 'stroke-opacity': .25 }, g);
+    }
+  }
+
+  // Effects: smoke above the right tower, fire in a window, a person at the entrance
+  const fx = document.getElementById('fx');
+  [[350, 322, 20, .55], [340, 298, 22, .5], [358, 276, 20, .42], [344, 254, 17, .34], [356, 238, 12, .25]].forEach(([cx, cy, r, o]) =>
+    el('circle', { cx, cy, r, fill: '#cbd5e1', 'fill-opacity': o, filter: 'url(#blur8)' }, fx));
+  el('circle', { cx: 173, cy: 356, r: 26, fill: 'url(#fireGlow)' }, fx);
+  el('path', { d: 'M173 372c-9 0-13-7-11-14 2-6 7-8 7-15 5 4 6 8 6 11 2-2 3-4 3-7 6 6 7 12 5 17-2 5-6 8-10 8z', fill: '#fb923c', filter: 'url(#blur3)' }, fx);
+  el('path', { d: 'M173 370c-5 0-7-4-6-8 1-3 4-5 4-9 3 3 4 6 3 9 2-1 3-3 3-5 3 4 3 8 2 10-1 2-3 3-6 3z', fill: '#fde68a' }, fx);
+  const person = el('g', { fill: '#e2e8f0' }, fx);
+  el('circle', { cx: 244, cy: 529, r: 6 }, person);
+  el('path', { d: 'M236 562v-18a8 8 0 0 1 16 0v18h-4v-2h-8v2z' }, person);
+</script>
+</body>
+</html>
