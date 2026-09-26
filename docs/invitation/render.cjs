@@ -1,6 +1,6 @@
-// Renders each numbered poster HTML in this folder to a 2x PNG in ./png.
+// Renders each poster HTML in this folder to a 2x PNG in ./png.
 //   NODE_PATH=$(npm root -g) node render.cjs            # all posters
-//   NODE_PATH=$(npm root -g) node render.cjs 01-navy-gold.html
+//   NODE_PATH=$(npm root -g) node render.cjs invitation.html
 // Google Fonts are fetched through Node (route.fetch) so the rendering works
 // behind a TLS-intercepting proxy that the headless browser does not trust.
 const { chromium } = require('playwright');
@@ -9,7 +9,7 @@ const { resolve, basename } = require('node:path');
 
 (async () => {
   const args = process.argv.slice(2);
-  const files = args.length ? args : readdirSync(__dirname).filter((f) => /^\d.*\.html$/.test(f));
+  const files = args.length ? args : readdirSync(__dirname).filter((f) => f.endsWith('.html'));
   const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
   mkdirSync(resolve(__dirname, 'png'), { recursive: true });
 

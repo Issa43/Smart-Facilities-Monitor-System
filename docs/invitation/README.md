@@ -1,17 +1,15 @@
 # Graduation defense invitation — SFLMS
 
-Modern invitations for the project defense, built as editable HTML and
-rendered to PNG. All four keep the original content (title, team,
-supervisor, date, time, venue, motto, closing lines). They use a modern,
-dark AI and developer style (Alexandria, IBM Plex Sans Arabic, JetBrains
-Mono), and every visual comes from the project itself.
+A simple, modern invitation for the project defense, built as editable HTML
+and rendered to PNG. It has the same content as the original. The design is
+one illustration tied to the project (a smart glass building with an AI neural
+network rising from it), clean Arabic typography (Alexandria, IBM Plex Sans
+Arabic), and the details set as plain text.
 
-| File | Concept | Size |
-|------|---------|------|
-| `01-ai-vision.html` | AI camera feed: isometric smart buildings with YOLO detections (`fire`, `smoke`, `person`), a HUD showing the defense date and time, lifecycle stages as `plan()` → `maintain()`, and the real tech stack | 3:4, 2400×3200 |
-| `02-code-editor.html` | IDE layout: `defense.py` with the project's detector and handover logic, the invitation as a live Markdown preview, and a terminal and status bar | 3:4, 2400×3200 |
-| `03-ai-core.html` | Keynote-style minimal design: an AI core with the five lifecycle stages orbiting it | 3:4, 2400×3200 |
-| `04-story-ai-core.html` | 9:16 version of 03 for WhatsApp status and Instagram stories | 9:16, 2160×3840 |
+| File | Format | Size |
+|------|--------|------|
+| `invitation.html` | Poster / print, 3:4 | 2400×3200 |
+| `invitation-story.html` | WhatsApp status / Instagram story, 9:16 | 2160×3840 |
 
 The rendered images are in `png/`.
 
@@ -52,5 +50,5 @@ from Google Fonts. To regenerate the PNGs (uses the Playwright/Chromium install)
 ```bash
 cd docs/invitation
 NODE_PATH=$(npm root -g) node render.cjs                    # all posters
-NODE_PATH=$(npm root -g) node render.cjs 03-ivory-emerald.html
+NODE_PATH=$(npm root -g) node render.cjs invitation.html
 ```
