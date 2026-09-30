@@ -17,6 +17,7 @@ import {
   listCameraRois,
   listRestrictedSchedules,
   listVirtualLines,
+  updateVirtualLine,
 } from '@/api/aiSecurity'
 import { listCameras } from '@/api/security'
 import { useToast } from '@/context/ToastContext'
@@ -28,6 +29,10 @@ import { ErrorState, SkeletonLines, StateCard } from '@/components/ui/Feedback/F
 import { Panel } from '@/components/ui/Panel/Panel'
 import { Section, SplitGrid } from '@/components/ui/Display/Display'
 import { RoiDrawer } from '../RoiDrawer'
+
+// The ANPR detector's live feed: the virtual line is drawn on its raw frame.
+const ANPR_STREAM_URL =
+  import.meta.env.VITE_ANPR_STREAM_URL?.trim() || 'http://localhost:8092/stream'
 
 const MODEL_LABELS: Record<CameraAiModelIdentifier, string> = {
   fire_smoke: 'الحريق والدخان',
@@ -43,7 +48,7 @@ export function AdminAiCameraConfigurationPage() {
   const [cameraId, setCameraId] = useState('')
   const [roi, setRoi] = useState({ identifier: '', name: '' })
   const [roiPoints, setRoiPoints] = useState<PixelPoint[]>([])
-  const [line, setLine] = useState({ start: '{"x":0,"y":50}', end: '{"x":100,"y":50}' })
+  const [linePoints, setLinePoints] = useState<PixelPoint[]>([])
   const [vehicle, setVehicle] = useState({ plate: '', responsible: '', expires: '' })
   const [scheduleRoi, setScheduleRoi] = useState('')
   const cameras = useQuery({ queryKey: ['security-cameras'], queryFn: listCameras })
@@ -109,14 +114,23 @@ export function AdminAiCameraConfigurationPage() {
       setRoiPoints([])
     },
   })
+  const lineFeedback = feedback('تم حفظ الخط الافتراضي')
   const addLine = useMutation({
-    mutationFn: () =>
-      createVirtualLine({
-        camera: selectedCamera,
-        lineStart: JSON.parse(line.start),
-        lineEnd: JSON.parse(line.end),
-      }),
-    ...feedback('تمت إضافة الخط الافتراضي'),
+    mutationFn: () => {
+      const [lineStart, lineEnd] = linePoints
+      // The add button stays disabled until both points are drawn.
+      if (!lineStart || !lineEnd) throw new Error('ارسم نقطتي الخط أولاً')
+      // A camera has one line: drawing again replaces the current one.
+      const current = lines.data?.find((item) => item.isActive)
+      return current
+        ? updateVirtualLine(current.id, { lineStart, lineEnd })
+        : createVirtualLine({ camera: selectedCamera, lineStart, lineEnd })
+    },
+    ...lineFeedback,
+    onSuccess: () => {
+      lineFeedback.onSuccess()
+      setLinePoints([])
+    },
   })
   const addVehicle = useMutation({
     mutationFn: () =>
@@ -186,6 +200,7 @@ export function AdminAiCameraConfigurationPage() {
               onChange={(event) => {
                 setCameraId(event.target.value)
                 setRoiPoints([])
+                setLinePoints([])
               }}
             >
               {cameras.data.map((camera) => (
@@ -258,30 +273,40 @@ export function AdminAiCameraConfigurationPage() {
               </ConfigForm>
             </Panel>
           </Section>
-          <SplitGrid>
-            <Panel title="الخطوط الافتراضية">
+          <Section>
+            <Panel
+              title="الخط الافتراضي"
+              subtitle="خط عبور لقراءة اللوحات (ANPR): كل مركبة تعبره تُسجَّل دخولاً أو خروجاً. ارسمه بنقرتين على صورة الكاميرا؛ السهم يشير إلى جهة الدخول، ولعكسه ارسم الخط من الطرف الآخر. رسم خط جديد يستبدل الخط الحالي."
+            >
               <ConfigList
                 items={lines.data?.map((item) => ({
                   id: item.id,
-                  label: `${JSON.stringify(item.lineStart)} → ${JSON.stringify(item.lineEnd)}`,
+                  label: `(${item.lineStart.x}, ${item.lineStart.y}) → (${item.lineEnd.x}, ${item.lineEnd.y})`,
                   active: item.isActive,
                 }))}
                 loading={lines.isPending}
                 onDisable={(id) => disable.mutate({ kind: 'line', id })}
               />
-              <ConfigForm onSubmit={() => addLine.mutate()}>
-                <input
-                  aria-label="بداية الخط JSON"
-                  value={line.start}
-                  onChange={(event) => setLine({ ...line, start: event.target.value })}
-                />
-                <input
-                  aria-label="نهاية الخط JSON"
-                  value={line.end}
-                  onChange={(event) => setLine({ ...line, end: event.target.value })}
+              <ConfigForm onSubmit={() => addLine.mutate()} disabled={linePoints.length !== 2}>
+                <RoiDrawer
+                  mode="line"
+                  streamUrl={ANPR_STREAM_URL}
+                  detectorName="كاشف اللوحات"
+                  cameraId={selectedCamera}
+                  existing={(lines.data ?? [])
+                    .filter((item) => item.isActive)
+                    .map((item) => ({
+                      id: item.id,
+                      name: '',
+                      polygon: [item.lineStart, item.lineEnd],
+                    }))}
+                  points={linePoints}
+                  onChange={setLinePoints}
                 />
               </ConfigForm>
             </Panel>
+          </Section>
+          <SplitGrid>
             <Panel title="الجداول المقيّدة دائماً">
               <ConfigList
                 items={schedules.data?.map((item) => ({
@@ -325,7 +350,7 @@ export function AdminAiCameraConfigurationPage() {
               >
                 <input
                   aria-label="رقم اللوحة"
-                  placeholder="رقم اللوحة"
+                  placeholder="رقم اللوحة كما يقرؤه الكاشف، مثل 17-42414"
                   value={vehicle.plate}
                   onChange={(event) => setVehicle({ ...vehicle, plate: event.target.value })}
                 />

@@ -7,7 +7,7 @@
 [![YOLO](https://img.shields.io/badge/Ultralytics-YOLO26-00FFFF?style=for-the-badge)](https://ultralytics.com/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-Video-5C3EE8?style=for-the-badge&logo=opencv)](https://opencv.org/)
 [![PaddleOCR](https://img.shields.io/badge/PaddleOCR-PP--OCRv6-2932E1?style=for-the-badge)](https://github.com/PaddlePaddle/PaddleOCR)
-[![Status](https://img.shields.io/badge/Docker%20%2F%20Backend-Integration%20pending-lightgrey?style=for-the-badge)]()
+[![Docker](https://img.shields.io/badge/Docker-Service-2496ED?style=for-the-badge&logo=docker)](#55-service-mode-docker)
 
 </div>
 
@@ -49,6 +49,11 @@ On an evaluation set of 83 plate photographs (47 distinct plates), the recogniti
 | `image_io.py` | Unicode-safe image reading and writing (OpenCV cannot open non-ASCII paths on Windows). |
 | `debug_utils.py` | Saves plate crops with their readings, capped at `MAX_DEBUG_IMAGES`. |
 | `test_format_logic.py`, `test_ocr_paddle_logic.py` | Unit tests for plate assembly, parsing, confidence rules, and deskewing — no model weights required. |
+| `headless.py` | **Service entry point** (the container's `CMD`): live source, admin settings, backend delivery, MJPEG preview (§5.5). |
+| `crossings.py` | Service rules: a crossing waits for its plate and vehicle, split tracks are continued, repeats are suppressed. |
+| `sflms_client.py` | Checks each plate against the backend's authorized-vehicle registry and posts `vehicle_entry` / `vehicle_exit` events. |
+| `camera_settings.py`, `stream_server.py`, `video_source.py` | Shared with the fire/smoke and intrusion services: admin settings polling, MJPEG preview, newest-frame reader. |
+| `verify_anpr_logic.py` | Checks the service rules without a camera or model (`python verify_anpr_logic.py`). |
 
 ---
 
@@ -318,6 +323,29 @@ python test_ocr_paddle_logic.py
 | PaddlePaddle / PaddleOCR | 3.3.1 (CPU) / 3.7.0 |
 | EasyOCR (baseline) | 1.7.2 |
 
+### 5.5 Service Mode (Docker)
+
+`headless.py` runs the same detector, OCR, voting and line geometry as a Docker service (`docker compose --profile anpr up -d anpr`) and reports every vehicle that crosses the camera's virtual line to the SFLMS backend.
+
+| Step | What happens |
+| --- | --- |
+| Settings | Every 30 s the service reads, for its camera, whether the `anpr` model is switched on and the virtual line the admin drew (`camera_settings.py`). With the model off it streams the camera with a *model disabled* label and reads nothing; with no line drawn it reads plates but nothing can cross. |
+| Frames | A reader thread keeps only the newest frame, so a live camera never builds a backlog; a video file plays at its own frame rate. Detection and OCR run on every frame the service keeps up with (~14 frames/s on the Quadro M2200 in the container), the vehicle model on every second one. |
+| Crossing | `direction.py` decides IN / OUT exactly as in the local runner. IN is the side the arrow on the line points to — below a line drawn left to right — and becomes `vehicle_entry`; OUT becomes `vehicle_exit`. |
+| Waiting | A car usually crosses before its plate is readable. The crossing waits on its track until the plate is confirmed (3 agreeing reads) and the vehicle model has matched it, and is dropped if the track ends first. |
+| Split tracks | At a few frames per second the plate moves more than its own height between frames, and ByteTrack gives it a new id. A new track born within two plate widths of a track lost in the last 10 frames continues it: its side of the line, its readings and any crossing still waiting. On the sample video this raised the crossings caught from 2 of 5 loops to every loop. |
+| Registry | Just before posting, the client asks the backend whether the plate is in the authorized-vehicle registry (`/vehicles/authorized/?plate_number=`); the backend rejects an event whose `authorized` differs from its own answer. Unauthorized vehicles raise a security alert, authorized ones are only logged. |
+| Repeats | The same plate crossing the same way again within `ANPR_REPEAT_SECONDS` (30 s) is one vehicle, not a second event. |
+| Evidence | The snapshot shows the line, the vehicle box, the plate box and `plate \| type \| ENTRY/EXIT`. |
+
+Plates are registered in the format the detector reads them: `17-42414` (2 + 5) or `551-7467` (3 + 4). The event's `vehicle_type` keeps the COCO class (`car`, `truck`, `bus`, `motorcycle`) rather than the local runner's `CAR` / `Truck` grouping, because the backend has all four.
+
+The image is `requirements-service.txt` on `python:3.12-slim`. Its torch + CUDA wheels are the ~3 GB the fire/smoke image already holds, so on a machine that built that image, `ANPR_BASE_IMAGE=sflms-detector:dev` builds on top of it and downloads only PaddlePaddle (CPU) and PaddleOCR. PaddleOCR fetches its ~10 MB recognition model on first start into the `anpr_paddlex` volume.
+
+The service files are deployment-only; the modules shared with the local copy (§5.1) are unchanged.
+
+The per-frame flow, the crossing states, the data flow and the event sequence are drawn in `Diagrams/AI/ModelsPipeline/ANPR/`.
+
 ---
 
 ## 6. Limitations and Future Work
@@ -325,8 +353,9 @@ python test_ocr_paddle_logic.py
 - [ ] **Evaluation scale.** The evaluation covers 47 and 33 distinct plates photographed under uncontrolled conditions. Confirming these results on a larger, independently collected set — ideally footage from the deployment gate camera — is required before drawing general conclusions.
 - [ ] **Video coverage.** The video case study contains a single vehicle in daylight; multi-vehicle scenes, night-time footage, and occlusion remain untested.
 - [ ] **Real-time margin.** At 18.4 fps, the pipeline processes a 30 fps source at about 0.6× real time on the test laptop. Setting the NVIDIA power-management mode to *Prefer maximum performance* is expected to reduce the idle-state penalty described in §4.2 but has not been measured.
-- [ ] **Headless entry point.** `local_test.py` uses an OpenCV preview window; a container needs an entry point without `cv2.imshow` and with camera or RTSP stream inputs, which `collect_inputs` does not yet accept.
-- [ ] **Backend delivery.** Crossing events are printed and returned but not yet sent to the backend; an asynchronous HTTP notifier, like the one in the Fire & Smoke deployment, would provide this.
+- [x] **Headless entry point.** `headless.py` runs without a window on a video file or RTSP stream (§5.5).
+- [x] **Backend delivery.** Crossings are sent to the backend as `vehicle_entry` / `vehicle_exit` events (§5.5).
+- [ ] **Crossings before the first detection.** A plate first detected after it has already passed the line starts on the far side and never crosses it. Place the line where plates are already detectable, not at the edge of the view.
 - [ ] **Shared state.** `tracks`, `vehicle_numbers`, and the OCR reader are module-level state — adequate for one stream per process, but they must become per-stream objects before one process serves several cameras.
 - [ ] **Locked plates.** A locked plate is not re-read; if the tracker exchanged the boxes of two vehicles, the earlier label would persist.
 - [ ] **Vehicle numbering.** Numbering follows the confirmed plate, so a misread plate would create a new vehicle number, and a vehicle whose plate is never read receives none.

@@ -1,0 +1,26 @@
+# ANPR detector service dependencies (the Docker image).
+#
+# requirements.txt stays the list for the local runner. This one is pinned to
+# the versions the pipeline was measured with (README section 5.4):
+#
+#   torch 2.14.0+cu126 -> the build verified on the Quadro M2200 (Maxwell,
+#   sm_52); newer CUDA wheels drop sm_5x. The plate and vehicle models run on
+#   the GPU through it, as in the fire/smoke image.
+#
+#   PaddlePaddle is the plain PyPI build, i.e. CPU-only: PaddleOCR reads plate
+#   crops on the CPU (~70 ms each) and needs no CUDA of its own, so it cannot
+#   clash with torch's.
+--extra-index-url https://download.pytorch.org/whl/cu126
+
+torch==2.14.0
+torchvision
+ultralytics
+opencv-python-headless
+
+paddlepaddle==3.3.1
+paddleocr==3.7.0
+
+# ByteTrack's linear-assignment solver. Ultralytics does not declare it and
+# pip-installs it on the first track() call, which needs a network at
+# container start. Install it at build time.
+lap>=0.5.12

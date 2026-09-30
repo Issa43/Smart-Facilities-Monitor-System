@@ -91,7 +91,7 @@ The tuning values can be overridden with environment variables of the same name 
 4. On every `FRAME_SKIP`-th frame: if the `fire_smoke` model is switched off for this camera, publish the frame with a "model disabled" label and raise nothing; otherwise run YOLO over the whole frame and publish the annotated frame.
 5. Feed the result to `AlertManager`. For each alert, build the snapshot from the best evidence frame and post it through `sflms_client.py`.
 
-The per-frame flow is drawn in `Diagrams/AI/ModelsPipeline/FireAndSmokePipelineV5.png`.
+The per-frame flow is drawn in `Diagrams/AI/ModelsPipeline/FireAndSmoke/FireAndSmokePipelineV5.png`.
 
 ### Local demo (`Main.py`)
 

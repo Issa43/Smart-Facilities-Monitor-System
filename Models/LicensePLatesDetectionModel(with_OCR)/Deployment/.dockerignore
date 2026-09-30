@@ -1,0 +1,7 @@
+# Test footage, generated output and caches stay out of the image; videos
+# reach the container through the /samples bind mount instead.
+*.mp4
+samples/
+debug_plates/
+outputs/
+__pycache__/

@@ -35,6 +35,8 @@ const FIRE_STREAM_URL =
   import.meta.env.VITE_CAMERA_STREAM_URL?.trim() || 'http://localhost:8090/stream'
 const INTRUSION_STREAM_URL =
   import.meta.env.VITE_INTRUSION_STREAM_URL?.trim() || 'http://localhost:8091/stream'
+const ANPR_STREAM_URL =
+  import.meta.env.VITE_ANPR_STREAM_URL?.trim() || 'http://localhost:8092/stream'
 
 type DetectorFeedProps = {
   title: string
@@ -116,6 +118,12 @@ function LiveDetectorFeeds() {
           description="بث مباشر من الكاميرا عبر نموذج كشف التسلل، مع تتبّع الأشخاص وإظهار منطقة التسلل والمربعات المؤكدة."
           streamUrl={INTRUSION_STREAM_URL}
           serviceHint="خدمة كشف التسلل (docker compose --profile intrusion up -d)"
+        />
+        <DetectorFeed
+          title="قراءة اللوحات — بث مباشر"
+          description="بث مباشر من كاميرا البوابة عبر نموذج قراءة اللوحات، مع الخط الافتراضي وأرقام اللوحات المقروءة."
+          streamUrl={ANPR_STREAM_URL}
+          serviceHint="خدمة قراءة اللوحات (docker compose --profile anpr up -d)"
         />
       </div>
     </Section>

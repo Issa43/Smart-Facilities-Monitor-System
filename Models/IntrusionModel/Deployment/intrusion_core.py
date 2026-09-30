@@ -16,8 +16,8 @@ a deployment does not need a code edit.
 
 import os
 import time
-from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, time as dt_time, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import cv2
 import numpy as np
@@ -75,11 +75,21 @@ BOX_CORNER_MAX_PX = 18             # حدّ أعلى للانحناء بعد ا�
 ZONE_DRAW_MARGIN_PX = 2            # إزاحة الرسم للداخل فقط (كي لا يُقصّ خط المضلّع عند حافة الإطار)
                                    # لا تؤثر على فحص الدخول: المنطقة تبقى كامل الإطار
 
-# العتبات بالثواني لا بالإطارات: عدد الإطارات يعني مدة مختلفة مع كل fps
-# (8 إطارات = 0.33s على 24fps لكن 0.13s على 60fps)، وتتغيّر أيضاً مع VID_STRIDE.
-# تُحوَّل تلقائياً إلى إطارات عند التشغيل حسب fps المصدر.
-DWELL_CONFIRM_SECONDS = _env_float('INTRUSION_DWELL_SECONDS', 0.35)       # كم ثانية يبقى الشخص داخل المنطقة قبل إطلاق التنبيه
-STALE_TRACK_TIMEOUT_S = _env_float('INTRUSION_STALE_SECONDS', 10.0)       # بعد كم ثانية من عدم ظهور track id نعتبره خرج ونحذفه من الذاكرة
+# Thresholds are in seconds and TrackState measures them in seconds, not
+# frames. A frame count only matches a duration at a known, steady rate, and a
+# live stream has neither: ultralytics hands over only the newest frame, so at
+# ~2 inferences/s on the CPU "9 frames at 25 fps" took ~4.5 s instead of 0.35 s.
+#
+# 1 s inside: long enough that someone clipping the corner of an ROI while
+# walking past does not raise an alarm, short enough to catch a person who
+# steps in and stops.
+DWELL_CONFIRM_SECONDS = _env_float('INTRUSION_DWELL_SECONDS', 1.0)
+# A track unseen this long has left the scene and its state is dropped.
+STALE_TRACK_TIMEOUT_S = _env_float('INTRUSION_STALE_SECONDS', 10.0)
+# A confirmed person must stay outside every ROI this long before they can
+# raise a new alarm. Without it, feet on the edge of an ROI flicker in and out
+# and every re-entry was a fresh alarm for the same person.
+REARM_SECONDS = _env_float('INTRUSION_REARM_SECONDS', 2.0)
 
 SAVE_OUTPUT_VIDEO = "intrusion_output.mp4"   # مسار حفظ الفيديو المُعلّم (None لتعطيل الحفظ)
 OUTPUT_FPS = None                  # None = خذ fps من الفيديو المصدر (ضع رقماً لفرض قيمة)
@@ -242,17 +252,44 @@ def raise_alert(person_no, point, track_id):
           f"({time.strftime('%Y-%m-%d %H:%M:%S')})")
 
 
+def restricted_now(schedule, moment):
+    """Is an ROI with this schedule restricted at `moment` (an aware datetime)?
+
+    No schedule means always restricted: an ROI the admin drew is a restricted
+    area unless they gave it hours. Weekdays are 0=Monday..6=Sunday in the
+    schedule's own timezone, and an overnight window (from_time > to_time)
+    belongs to the day it starts on, as the backend documents.
+    """
+    if schedule is None or schedule.get("always_restricted"):
+        return True
+    try:
+        zone = ZoneInfo(schedule.get("timezone_name") or "UTC")
+    except (ValueError, ZoneInfoNotFoundError):
+        zone = timezone.utc
+    local = moment.astimezone(zone)
+    start = dt_time.fromisoformat(schedule["from_time"])
+    end = dt_time.fromisoformat(schedule["to_time"])
+    days = set(schedule.get("days_of_week") or [])
+    now, day = local.time(), local.weekday()
+    if start < end:
+        return day in days and start <= now < end
+    # Overnight: the evening part is on a listed day, or the morning part
+    # finishes a window that started on a listed day before.
+    return (day in days and now >= start) or ((day - 1) % 7 in days and now < end)
+
+
 class TrackState:
     """
-    يتتبّع حالة كل شخص (track id): كم إطار متتالي داخل المنطقة، وهل تم التنبيه له، وآخر ظهور له.
+    Per-person state: when the track entered a restricted ROI, whether it has
+    raised its alarm, and when it was last seen.
 
-    العتبات تُمرَّر بالإطارات بعد تحويلها من الثواني حسب fps الفعلي.
-    آخر ظهور يُقاس برقم الإطار لا بساعة الجدار: معالجة فيديو مسجّل تجري بسرعة
-    تختلف عن سرعة تشغيله (هنا ~12 إطار/ث مقابل 24)، فساعة الجدار كانت تحذف
-    المسارات بعد مدة فيديو مختلفة تماماً عن المقصود.
+    Every time is in seconds on the caller's clock (`now`): the monotonic
+    clock for a live camera, the video's own timeline for a file. A file is
+    processed at whatever speed inference allows, so the wall clock would
+    stretch or squeeze its dwell times.
     """
 
-    def __init__(self, dwell_frames, stale_frames, on_alert=None):
+    def __init__(self, dwell_seconds, stale_seconds, rearm_seconds, on_alert=None):
         # on_alert lets the caller replace the print with real delivery
         # (the headless runner POSTs to SFLMS). Signature matches raise_alert
         # plus the track's last box, which the backend needs as bbox.
@@ -260,14 +297,15 @@ class TrackState:
             lambda person_no, point, track_id, xyxy, conf, entered_at:
             raise_alert(person_no, point, track_id)
         )
-        self.dwell_frames = max(1, int(dwell_frames))
-        self.stale_frames = max(1, int(stale_frames))
-        self.dwell_count = defaultdict(int)
+        self.dwell_seconds = max(0.0, float(dwell_seconds))
+        self.stale_seconds = max(0.0, float(stale_seconds))
+        self.rearm_seconds = max(0.0, float(rearm_seconds))
+        self.inside_since = {}
+        self.outside_since = {}
         self.alerted = set()
         self.last_seen = {}
-        # Wall-clock moment each track entered the zone. The dwell counter is
-        # in frames, but the backend wants a timestamp on every intrusion
-        # event, and it must be the entry instant -- not the confirmation.
+        # Wall-clock moment each track entered the zone, for the backend's
+        # entered_roi_at. It must be the entry instant, not the confirmation.
         self.entered_at = {}
         # رقم عرض متسلسل لكل مسار. رقم ByteTrack الداخلي عدّاد عام يزداد مع كل
         # مسار مرشّح حتى لو حُذف بعد إطار واحد، فتظهر فجوات ويقفز الرقم بعيداً
@@ -281,31 +319,43 @@ class TrackState:
             self._next_display += 1
         return self.display_id[track_id]
 
-    def update(self, track_id, inside, point, frame_idx, xyxy=None, conf=None):
-        self.last_seen[track_id] = frame_idx
+    def dwell(self, track_id, now):
+        """Seconds the track has been inside, or 0 when it is not."""
+        since = self.inside_since.get(track_id)
+        return 0.0 if since is None else max(0.0, now - since)
+
+    def update(self, track_id, inside, point, now, xyxy=None, conf=None):
+        self.last_seen[track_id] = now
 
         if inside:
-            if self.dwell_count[track_id] == 0:
+            self.outside_since.pop(track_id, None)
+            if track_id not in self.inside_since:
+                self.inside_since[track_id] = now
                 self.entered_at[track_id] = datetime.now(timezone.utc)
-            self.dwell_count[track_id] += 1
-            if self.dwell_count[track_id] >= self.dwell_frames and track_id not in self.alerted:
+            if (self.dwell(track_id, now) >= self.dwell_seconds
+                    and track_id not in self.alerted):
                 self.on_alert(self.display_for(track_id), point, track_id, xyxy, conf,
                               self.entered_at.get(track_id))
                 self.alerted.add(track_id)
-        else:
-            # خرج من المنطقة: صفّر العداد واسمح بتنبيه جديد إذا عاد لاحقاً
-            self.dwell_count[track_id] = 0
-            self.alerted.discard(track_id)
-            self.entered_at.pop(track_id, None)
+        elif track_id in self.inside_since:
+            # Stepping out only counts once it lasts: until then the track keeps
+            # its dwell and, if confirmed, stays confirmed.
+            left = self.outside_since.setdefault(track_id, now)
+            if now - left >= self.rearm_seconds:
+                self._reset(track_id)
 
-    def prune_stale(self, frame_idx):
+    def _reset(self, track_id):
+        self.inside_since.pop(track_id, None)
+        self.outside_since.pop(track_id, None)
+        self.alerted.discard(track_id)
+        self.entered_at.pop(track_id, None)
+
+    def prune_stale(self, now):
         stale_ids = [tid for tid, seen in self.last_seen.items()
-                     if frame_idx - seen > self.stale_frames]
+                     if now - seen > self.stale_seconds]
         for tid in stale_ids:
             self.last_seen.pop(tid, None)
-            self.dwell_count.pop(tid, None)
-            self.alerted.discard(tid)
-            self.entered_at.pop(tid, None)
+            self._reset(tid)
             # لا تنسَ جدول أرقام العرض: بدون حذفه ينمو بلا حدود في تشغيل
             # كاميرا متواصل (مقاس: 500 مسار قصير -> 500 مدخلاً بينما بقيت
             # بقية الجداول عند 6). الرقم نفسه لا يُعاد استخدامه.
@@ -331,7 +381,8 @@ def draw_rounded_rect(img, x1, y1, x2, y2, color, thickness, radius):
 
 
 def draw_overlay(frame, zones, boxes_info):
-    """zones: list of (label, polygon) -- every ROI drawn for the camera."""
+    """zones: list of (label, polygon, restricted) -- every ROI drawn for the
+    camera. An ROI outside its restricted hours is drawn grey and marked open."""
     h, w = frame.shape[:2]
     # الرسم يُقاس مع دقة الإطار: سماكة 2 بكسل تكاد لا تُرى على إطار 4K
     k = max(1.0, h / 720.0)
@@ -341,15 +392,18 @@ def draw_overlay(frame, zones, boxes_info):
 
     # إزاحة نقاط الرسم للداخل فقط، وإلا اختفى نصف سماكة الخط خارج حدود الإطار
     m = max(ZONE_DRAW_MARGIN_PX, line_t // 2)
-    for label, polygon in zones:
+    for label, polygon, restricted in zones:
+        zone_color = (255, 0, 0) if restricted else (160, 160, 160)
+        if not restricted:
+            label = f"{label} (open)"
         draw_poly = np.clip(polygon, [m, m], [w - 1 - m, h - 1 - m]).astype(np.int32)
-        cv2.polylines(frame, [draw_poly], isClosed=True, color=(255, 0, 0), thickness=line_t)
+        cv2.polylines(frame, [draw_poly], isClosed=True, color=zone_color, thickness=line_t)
 
         # النص أسفل أول نقطة كي يبقى ظاهراً حتى لو كانت المنطقة ملاصقة لحافة الإطار
         label_x, label_y = draw_poly[0]
         cv2.putText(frame, label,
                     (int(label_x) + int(6 * k), int(label_y) + int(22 * k)),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_s, (255, 0, 0), line_t)
+                    cv2.FONT_HERSHEY_SIMPLEX, font_s, zone_color, line_t)
 
     max_radius = BOX_CORNER_MAX_PX * k
     for track_id, point, inside, dwell, confirmed, xyxy in boxes_info:
@@ -367,7 +421,7 @@ def draw_overlay(frame, zones, boxes_info):
         cv2.circle(frame, point, dot_r, color, -1)
 
         # الرقم فوق الصندوق لا عند القدمين: أوضح نسبةً للجسد وأقل تداخلاً في الزحام
-        label = f"P{track_id}" if not inside else f"P{track_id} d={dwell}"
+        label = f"P{track_id}" if not inside else f"P{track_id} {dwell:.1f}s"
         ty = y1 - int(6 * k)
         if ty < int(18 * k):            # صندوق ملاصق لأعلى الإطار: انقل النص للداخل
             ty = y1 + int(20 * k)

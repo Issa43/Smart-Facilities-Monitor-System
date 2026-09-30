@@ -101,6 +101,11 @@ class ConfigurationViewSet(ConfigurationAccessMixin, viewsets.ModelViewSet):
     create_serializer_class = None
     update_serializer_class = None
     audit_prefix = None
+    # For a configuration that is one-to-one with its owner (a camera's line,
+    # an ROI's schedule): the owner field. Disabling is soft, so the disabled
+    # row still holds the owner's one slot; a new configuration for that owner
+    # reuses it instead of colliding with it forever.
+    reuse_disabled_by = None
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -112,13 +117,24 @@ class ConfigurationViewSet(ConfigurationAccessMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         payload = self.get_serializer(data=request.data)
         payload.is_valid(raise_exception=True)
+        values = dict(payload.validated_data)
+        disabled = self._disabled_to_reuse(values)
         try:
-            instance = create_configuration(
-                model=self.queryset.model,
-                values=dict(payload.validated_data),
-                actor=request.user,
-                action=f"{self.audit_prefix}.created",
-            )
+            if disabled is None:
+                instance = create_configuration(
+                    model=self.queryset.model,
+                    values=values,
+                    actor=request.user,
+                    action=f"{self.audit_prefix}.created",
+                )
+            else:
+                values.pop(self.reuse_disabled_by)
+                instance = update_configuration(
+                    instance=disabled,
+                    values={**values, "is_active": True},
+                    actor=request.user,
+                    action=f"{self.audit_prefix}.updated",
+                )
         except DjangoValidationError as exc:
             raise _validation_error(exc) from exc
         except IntegrityError as exc:
@@ -127,6 +143,13 @@ class ConfigurationViewSet(ConfigurationAccessMixin, viewsets.ModelViewSet):
             self.read_serializer_class(instance).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def _disabled_to_reuse(self, values):
+        if self.reuse_disabled_by is None:
+            return None
+        return self.queryset.model.all_objects.filter(
+            **{self.reuse_disabled_by: values[self.reuse_disabled_by]}, is_active=False
+        ).first()
 
     def _update(self, request, *, partial):
         instance = self.get_object()
@@ -189,6 +212,7 @@ class RestrictedScheduleViewSet(ConfigurationViewSet):
     update_serializer_class = RestrictedScheduleUpdateSerializer
     audit_prefix = "restricted_schedule"
     filterset_fields = ["roi"]
+    reuse_disabled_by = "roi"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -209,6 +233,7 @@ class VirtualLineViewSet(ConfigurationViewSet):
     update_serializer_class = VirtualLineUpdateSerializer
     audit_prefix = "virtual_line"
     filterset_fields = ["camera"]
+    reuse_disabled_by = "camera"
 
     def get_queryset(self):
         queryset = super().get_queryset()

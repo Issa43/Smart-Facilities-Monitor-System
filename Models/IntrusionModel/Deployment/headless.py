@@ -20,7 +20,8 @@ The intrusion zones are the ROIs the admin draws for this camera in the SFLMS
 console, and the model itself is switched on and off there per camera (see
 camera_settings.py). With no ROI drawn nothing can be an intrusion, so no
 alerts are raised; while the model is off the live view keeps running without
-inference.
+inference. An ROI with a restricted-hours schedule only raises alarms inside
+those hours; an ROI without one is always restricted.
 
 Unlike the fire/smoke detector this pipeline tracks objects, so ultralytics
 owns the capture loop (model.track(stream=True)): ByteTrack needs contiguous
@@ -79,13 +80,13 @@ def resolve_model(device):
 
 
 def zones_from(rois):
-    """Backend ROIs as (roi_id, label, polygon) for drawing and hit tests."""
+    """Backend ROIs as (roi_id, label, polygon, schedule) for drawing and hit tests."""
     zones = []
     for roi in rois:
         # cv2.putText draws only ASCII; an Arabic ROI name would come out as '?'.
         label = roi["name"] if roi["name"].isascii() else "ROI"
         polygon = np.array(roi["polygon"], dtype=np.int32)
-        zones.append((roi["id"], label, polygon))
+        zones.append((roi["id"], label, polygon, roi.get("schedule")))
     return zones
 
 
@@ -117,6 +118,9 @@ class IntrusionRunner:
         ).start()
         self.zones = []
         self._zones_source = None
+        # ROI ids restricted at the current frame; recomputed every frame
+        # because a schedule can start or end at any moment.
+        self.restricted = set()
 
         self.stopping = False
         self.started = time.monotonic()
@@ -139,10 +143,30 @@ class IntrusionRunner:
     # -- alerting -------------------------------------------------------
 
     def roi_containing(self, point):
-        for roi_id, _, polygon in self.zones:
-            if core.is_inside_zone(point, polygon):
+        """The restricted ROI the point stands in, or None."""
+        for roi_id, _, polygon, _ in self.zones:
+            if roi_id in self.restricted and core.is_inside_zone(point, polygon):
                 return roi_id
         return None
+
+    def zones_to_draw(self):
+        return [
+            (label, polygon, roi_id in self.restricted)
+            for roi_id, label, polygon, _ in self.zones
+        ]
+
+    def evidence_frame(self, person_no, point, xyxy, roi_id):
+        """The snapshot: the ROIs and the person who raised the alarm, in red."""
+        # inside=False only drops the dwell from the label; confirmed=True
+        # still draws the box red.
+        frame = core.draw_overlay(
+            self.frame.copy(),
+            self.zones_to_draw(),
+            [(person_no, point, False, 0.0, True, xyxy)],
+        )
+        label = next(label for zone_id, label, _, _ in self.zones if zone_id == roi_id)
+        stamp = utc_now().strftime("%Y-%m-%d %H:%M:%S UTC")
+        return core.draw_hud(frame, f"SFLMS intrusion | P{person_no} in {label} | {stamp}")
 
     def on_alert(self, person_no, point, track_id, xyxy, conf, entered_at=None):
         if self.frame is None or xyxy is None:
@@ -158,7 +182,7 @@ class IntrusionRunner:
             flush=True,
         )
         self.client.send_alert(
-            frame=self.frame,
+            frame=self.evidence_frame(person_no, point, xyxy, roi_id),
             class_name="person",
             confidence=float(conf) if conf is not None else 1.0,
             bbox=xyxy,
@@ -186,13 +210,31 @@ class IntrusionRunner:
             verbose=False,
         )
 
-        src_fps = core.source_fps(self.video_source)
-        eff_fps = src_fps / max(1, int(core.VID_STRIDE))
+        # A file is processed at inference speed, so its clock is its own
+        # timeline (frame number / fps). A live source is processed as it
+        # arrives, with frames dropped when inference falls behind, so its
+        # clock is real time.
+        is_file = os.path.isfile(self.video_source)
+        seconds_per_frame = max(1, int(core.VID_STRIDE)) / core.source_fps(self.video_source)
         state = core.TrackState(
-            dwell_frames=round(core.DWELL_CONFIRM_SECONDS * eff_fps),
-            stale_frames=round(core.STALE_TRACK_TIMEOUT_S * eff_fps),
+            dwell_seconds=core.DWELL_CONFIRM_SECONDS,
+            stale_seconds=core.STALE_TRACK_TIMEOUT_S,
+            rearm_seconds=core.REARM_SECONDS,
             on_alert=self.on_alert,
         )
+        try:
+            return self._consume(results, state, is_file, seconds_per_frame)
+        finally:
+            # ultralytics never stops its stream reader when the consumer
+            # stops early (model switched off, service stopping): the reader
+            # thread and its RTSP connection stayed open, one more every time
+            # the model was switched off and on again.
+            results.close()
+            dataset = getattr(getattr(self.model, "predictor", None), "dataset", None)
+            if dataset is not None and hasattr(dataset, "close"):
+                dataset.close()
+
+    def _consume(self, results, state, is_file, seconds_per_frame):
         night_mode = None
         frame_idx = 0
         saw_frame = False
@@ -212,10 +254,16 @@ class IntrusionRunner:
 
             frame_idx += 1
             saw_frame = True
+            now = frame_idx * seconds_per_frame if is_file else time.monotonic()
             self.frame = result.orig_img.copy()
             if self.settings.rois is not self._zones_source:
                 self._zones_source = self.settings.rois
                 self.zones = zones_from(self.settings.rois)
+            moment = utc_now()
+            self.restricted = {
+                roi_id for roi_id, _, _, schedule in self.zones
+                if core.restricted_now(schedule, moment)
+            }
 
             dark = core.frame_is_dark(self.frame)
             active_conf = core.CONF_NIGHT if dark else core.CONF_DAY
@@ -238,32 +286,33 @@ class IntrusionRunner:
                     point = core.foot_point(xyxy, self.frame.shape)
                     inside = self.roi_containing(point) is not None
                     self.first_seen.setdefault(track_id, utc_now())
-                    state.update(track_id, inside, point, frame_idx, xyxy, det_conf)
+                    state.update(track_id, inside, point, now, xyxy, det_conf)
                     boxes_info.append((
                         state.display_for(track_id), point, inside,
-                        state.dwell_count[track_id],
+                        state.dwell(track_id, now),
                         track_id in state.alerted,
                         xyxy,
                     ))
 
-            state.prune_stale(frame_idx)
+            state.prune_stale(now)
             # prune_stale drops the track's own bookkeeping; mirror it here or
             # first_seen grows without bound on a long-running camera.
             for gone in set(self.first_seen) - set(state.last_seen):
                 self.first_seen.pop(gone, None)
 
             annotated = core.draw_overlay(
-                self.frame.copy(),
-                [(label, polygon) for _, label, polygon in self.zones],
-                boxes_info,
+                self.frame.copy(), self.zones_to_draw(), boxes_info
             )
             inside_n = sum(1 for box in boxes_info if box[2])
-            hud = (
-                f"SFLMS intrusion | persons {len(boxes_info)} | "
-                f"inside {inside_n} | alerts {self.alert_count}"
-                if self.zones
-                else "SFLMS intrusion | no ROI drawn for this camera"
-            )
+            if not self.zones:
+                hud = "SFLMS intrusion | no ROI drawn for this camera"
+            elif not self.restricted:
+                hud = "SFLMS intrusion | no ROI restricted right now"
+            else:
+                hud = (
+                    f"SFLMS intrusion | persons {len(boxes_info)} | "
+                    f"inside {inside_n} | alerts {self.alert_count}"
+                )
             annotated = core.draw_hud(annotated, hud)
             self.stream.publish(annotated, raw=self.frame)
 

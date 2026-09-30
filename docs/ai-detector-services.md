@@ -1,7 +1,8 @@
 # AI detector services
 
-How the fire/smoke and intrusion models run against live cameras and feed the
-SFLMS backend, what was measured while tuning them, and what is still open.
+How the fire/smoke, intrusion and ANPR models run against live cameras and
+feed the SFLMS backend, what was measured while tuning them, and what is still
+open.
 
 See [camera-processing.md](camera-processing.md) for the ingestion contract and
 the realtime protocol. This document covers the detector side.
@@ -15,7 +16,7 @@ network, the backend API, and the `protected_media` directory.
 
 ```
         BROWSER
-           │ :8080                    :8090 / :8091
+           │ :8080                 :8090 / :8091 / :8092
            ▼                                  │  (MJPEG, direct)
       ┌─────────┐                             │
       │ frontend│  nginx proxies              │
@@ -29,15 +30,15 @@ network, the backend API, and the `protected_media` directory.
       │  redis   │◄──────┬────────▲           │
       └──────────┘       │        │ POST /api/v1/camera-events/
        cache/channels    │        │ (AIKey auth)
-       /celery broker    │   ┌────┴──────┬───────────┐
-                         │   │ detector  │ intrusion │
-      ┌──────────┐       │   │  (fire)   │           │
-      │  celery  │───────┘   └────┬──────┴─────┬─────┘
-      │ worker   │                │ RTSP 8554  │
-      │  beat    │                ▼            ▼
-      └──────────┘            ┌──────────────────────┐
-                              │      mediamtx        │
-                              └──────────────────────┘
+       /celery broker    │   ┌────┴──────┬───────────┬──────────┐
+                         │   │ detector  │ intrusion │   anpr   │
+      ┌──────────┐       │   │  (fire)   │           │ (plates) │
+      │  celery  │───────┘   └────┬──────┴─────┬─────┴────┬─────┘
+      │ worker   │                │ RTSP 8554  │          │
+      │  beat    │                ▼            ▼          ▼
+      └──────────┘            ┌─────────────────────────────────┐
+                              │            mediamtx             │
+                              └─────────────────────────────────┘
                                        ▲ RTSP publish
                                   HOST ffmpeg (webcam)
 ```
@@ -48,9 +49,11 @@ Adding a third model is a new service block, not an architectural change.
 
 ### Why separate containers
 
-- **Framework conflict.** The ANPR model (not yet containerised) needs
-  PaddleOCR, i.e. `paddlepaddle`; the others need `torch`. Both bundle their
-  own CUDA and conflict on `numpy`/`protobuf`/`opencv`.
+- **Framework weight.** The ANPR model needs PaddleOCR (`paddlepaddle`) next
+  to `torch`. It uses the CPU build of PaddlePaddle, which brings no CUDA of
+  its own, so the two coexist in the `anpr` image; but its pins (`numpy`, a
+  desktop `opencv-contrib`) are reason enough not to share one environment
+  with the other models.
 - **Module collisions.** The fire and ANPR `Deployment/` folders both contain
   `Main.py`, `config.py` and `local_test.py`. On one `PYTHONPATH`,
   `import config` is ambiguous.
@@ -66,15 +69,15 @@ layers. Two 12 GB images built from the same base and requirements occupied
 ## Running it
 
 ```bash
-# infra + app + both detectors
-docker compose --profile detector --profile intrusion up -d
+# infra + app + all three detectors
+docker compose --profile detector --profile intrusion --profile anpr up -d
 
 # then publish the laptop webcam from the Windows host
 ops/start_laptop_camera.ps1
 ```
 
 > `docker compose --profile X up` stops services outside that profile. Always
-> pass **both** profiles, or the other detector and the frontend get stopped.
+> pass **every** profile you run, or the other detectors get stopped.
 
 The publisher is a **host process with no supervision**. Docker Desktop on
 Windows cannot forward a webcam into a Linux container, so the host encodes it
@@ -88,6 +91,7 @@ first.
 | backend | 8000 | Django + Daphne |
 | detector (fire) | 8090 | MJPEG preview |
 | intrusion | 8091 | MJPEG preview, distinct host port |
+| anpr | 8092 | MJPEG preview; the admin draws the virtual line on its frame |
 | mediamtx | 8554 | RTSP relay |
 
 To test without a camera, put a video in the detector's `samples/` folder
@@ -97,7 +101,8 @@ their own frame rate, not as fast as they decode, and loop when `VIDEO_LOOP=1`:
 ```powershell
 $env:VIDEO_SOURCE="/samples/<fire video>.mp4"            # fire / smoke
 $env:INTRUSION_VIDEO_SOURCE="/samples/<people video>.mp4"  # intrusion
-docker compose --profile detector --profile intrusion up -d
+$env:ANPR_VIDEO_SOURCE="/samples/VID_sample.mp4"          # ANPR
+docker compose --profile detector --profile intrusion --profile anpr up -d
 ```
 
 From Git Bash, prefix the command with `MSYS_NO_PATHCONV=1`, or it rewrites
@@ -195,6 +200,37 @@ measured values as defaults. `headless.py` is the service wrapper.
 Ultralytics owns the capture loop (`model.track(stream=True)`) because
 ByteTrack needs contiguous frames and `persist=True` to keep ids stable — a
 separate reader thread handing over "the latest frame" would break tracking.
+When a pass ends early (model switched off, service stopping) the runner closes
+ultralytics' stream reader itself: ultralytics does not, and every off/on used
+to leave one more RTSP connection open.
+
+### Alarm rules
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `INTRUSION_DWELL_SECONDS` | 1.0 | time inside a restricted ROI before the alarm |
+| `INTRUSION_REARM_SECONDS` | 2.0 | time outside before the same person can alarm again |
+| `INTRUSION_STALE_SECONDS` | 10 | a track unseen this long is forgotten |
+
+A person is inside when their **foot point** (bottom-centre of the box) is in
+an ROI that is restricted right now. They raise **one alarm** after the dwell
+time, and another only after leaving for the re-arm time — feet on an ROI edge
+flicker in and out, and each flicker used to be a new alarm.
+
+Times are measured in seconds, not frames: real time for a live camera, the
+video's own timeline for a file. The old frame counts assumed 25 fps, but on a
+live stream ultralytics hands over only the newest frame and the CPU runs
+~2 inferences/s, so "0.35 s" took ~4.5 s and a track was forgotten after ~2 min.
+1 s rather than 0.35 s, because with correct timing 0.35 s alarms on anyone
+clipping an ROI corner while walking past.
+
+The snapshot shows the ROIs and the person who raised the alarm in red, with
+the ROI name and time.
+
+> Each new track id is a new person to the detector. A tracker id switch in a
+> crowd, or a looping test video (every loop restarts all tracks), therefore
+> raises a new alarm for someone already reported. The 11 s `PeopleWalking.mp4`
+> loop with an ROI over the whole hall gives ~10 alarms per loop for that reason.
 
 ### ONNX Runtime instead of PyTorch
 
@@ -234,25 +270,73 @@ network at container start and fails in an offline deployment.
 (`api/v1/camera_events/serializers.py`). `TrackState` stamps the moment a track
 crosses into the zone, which is earlier than confirmation by the dwell time.
 
-`time_restricted` is hardcoded `true`: this detector treats its zone as always
-restricted. A deployment with a real schedule should check it and simply not
-report outside the restricted window.
+`time_restricted` is always `true` because the detector only reports people in
+an ROI that is restricted at that moment. Each ROI's restricted-hours schedule
+(`/api/v1/restricted-schedules/`) is read with the ROIs; an ROI without one is
+always restricted. Outside its hours an ROI is drawn grey and marked "(open)",
+and people in it raise nothing.
 
 ---
 
-## Admin control: model switch and ROIs
+## ANPR detector
 
-Both detectors read their camera's settings from the backend at startup and
-every `CONFIG_REFRESH_SECONDS` (30 s) through `camera_settings.py`, using their
-own AI key: `GET /api/v1/cameras/<id>/active-models/` and, for intrusion,
-`GET /api/v1/roi/?camera_id=<id>`. If the backend is unreachable the last known
-settings stay in force.
+`Models/LicensePLatesDetectionModel(with_OCR)/Deployment/` — `headless.py` is
+the service runner, `local_test.py` remains the interactive one for videos and
+photos. The plate detector, PaddleOCR reading, voting and line geometry are the
+modules the deployment README measures (96.4 % exact reads, no wrong reads, on
+83 photos); the service adds what a live gate needs around them.
 
-| | Fire / smoke | Intrusion |
+| Setting | Default | Meaning |
 | --- | --- | --- |
-| Area watched | whole frame, no ROI | the ROIs the admin drew; none drawn = no alerts |
-| Model switched off | stops inferring, live view shows "model disabled" | same |
-| Event `roi_id` | not sent | the ROI the person was standing in |
+| `ANPR_REPEAT_SECONDS` | 30 | the same plate crossing the same way again within this is one vehicle |
+| `ANPR_VEHICLE_EVERY` | 2 | run the vehicle model every N processed frames |
+| `ANPR_DEVICE` | 0 | GPU for the plate and vehicle models; OCR is always CPU |
+
+A vehicle crossing the admin's line becomes `vehicle_entry` (towards the side
+the arrow on the line points to) or `vehicle_exit`. The backend needs the plate
+number, the vehicle type and box on every such event, and a car usually crosses
+before its plate is readable, so **a crossing waits on its track** until the
+plate is confirmed (3 agreeing reads) and the vehicle model has matched it; it
+is dropped, with a log line, if the track ends first.
+
+At the ~14 frames/s the service processes, a plate moves more than its own
+height between frames and ByteTrack keeps giving it new ids. A track born just
+past the line then never sees itself cross. **A new track within two plate
+widths of a track lost in the last 10 frames continues it** — its side of the
+line, its readings, any crossing still waiting. On the one-car sample this took
+the crossings caught from 2 of 5 loops to every loop.
+
+`authorized` must equal the backend's registry at the moment it stores the
+event, so the client asks `/vehicles/authorized/?plate_number=` right before
+each POST and asks again once if the POST is rejected for a registry change.
+Unauthorized vehicles raise a security alert; authorized ones are logged only.
+Register plates as the detector reads them, e.g. `17-42414`.
+
+The image is built on `python:3.12-slim` by default. Set
+`ANPR_BASE_IMAGE=sflms-detector:dev` to build it on the fire image instead:
+pip then finds the same torch + CUDA already installed and downloads only
+PaddlePaddle (CPU) and PaddleOCR. A from-scratch build here timed out
+downloading the CUDA wheels from `pypi.nvidia.com`; the layered one took ~30
+minutes. PaddleOCR fetches its ~10 MB model on first start into the
+`anpr_paddlex` volume.
+
+---
+
+## Admin control: model switch, ROIs and the virtual line
+
+Every detector reads its camera's settings from the backend at startup and
+every `CONFIG_REFRESH_SECONDS` (30 s) through `camera_settings.py`, using its
+own AI key: `GET /api/v1/cameras/<id>/active-models/`; for intrusion also
+`GET /api/v1/roi/?camera_id=<id>` and `restricted-schedules`, for ANPR
+`GET /api/v1/virtual-lines/?camera_id=<id>`. If the backend is unreachable the
+last known settings stay in force.
+
+| | Fire / smoke | Intrusion | ANPR |
+| --- | --- | --- | --- |
+| Area watched | whole frame, no ROI | the ROIs the admin drew; none drawn = no alerts | the virtual line; none drawn = no events |
+| Model switched off | stops inferring, live view shows "model disabled" | same | same |
+| Event `roi_id` | not sent | the ROI the person was standing in | not sent |
+| Restricted hours | — | an ROI's schedule; outside it the ROI is "open" and raises nothing | — |
 
 The admin draws ROIs in **Super Admin → AI camera configuration** by clicking
 points on the intrusion detector's live frame (`/snapshot/raw` on its stream
@@ -261,20 +345,34 @@ page warns when the frame belongs to a different camera. The backend also
 rejects events from a switched-off model, so turning a model off takes effect
 immediately even before the detector's next refresh.
 
+The virtual line is drawn the same way, on the ANPR detector's frame (port
+8092): two clicks, and an arrow shows which side counts as entry. Drawing again
+replaces the current line. A camera has one line and an ROI one schedule, and
+disabling is soft, so the backend reuses a disabled line or schedule for the
+next one; before, the disabled row kept the slot and every new one was a 409.
+
 ---
 
 ## Diagrams
 
-The fire / smoke diagrams live in `Diagrams/AI/ModelsPipeline/`, each as an
-editable `.drawio` file with a PNG export beside it.
+The detector diagrams live in `Diagrams/AI/ModelsPipeline/`, one folder per
+model, each as an editable `.drawio` file with a PNG export beside it.
 
 | Diagram | Shows |
 | --- | --- |
-| `FireAndSmokePipelineV5` | per-frame activity: sampling, model switch, YOLO26 preprocessing, inference, NMS, the sliding window and the incident / reminder logic |
-| `FireAndSmokeVideoDataFlow` | webcam → ffmpeg → MediaMTX → detector → MJPEG / backend |
-| `FireAndSmokeIncidentStates` | the per-class incident state machine |
-| `FireAlarmSequence` | one alarm from confirmation to the security officer, including rejection |
-| `AIServicesDeployment` | every container, its port and what it talks to |
+| `FireAndSmoke/FireAndSmokePipelineV5` | per-frame activity: sampling, model switch, YOLO26 preprocessing, inference, NMS, the sliding window and the incident / reminder logic |
+| `FireAndSmoke/FireAndSmokeVideoDataFlow` | webcam → ffmpeg → MediaMTX → detector → MJPEG / backend |
+| `FireAndSmoke/FireAndSmokeIncidentStates` | the per-class incident state machine |
+| `FireAndSmoke/FireAlarmSequence` | one alarm from confirmation to the security officer, including rejection |
+| `FireAndSmoke/AIServicesDeployment` | every container of the system, including all three detectors, its port and what it talks to |
+| `Intrusion/IntrusionPipeline` | per-frame activity: model switch, YOLO26 + ByteTrack, day / night confidence, restricted ROIs, dwell, re-arm |
+| `Intrusion/IntrusionVideoDataFlow` | webcam → MediaMTX → detector → MJPEG, plus the admin drawing ROIs on `/snapshot/raw` |
+| `Intrusion/IntrusionPersonStates` | the per-person state machine: outside, inside, alarmed |
+| `Intrusion/IntrusionAlarmSequence` | admin setup, the 30 s settings refresh, and one alarm to the security officer |
+| `ANPR/AnprPipeline` | per-frame activity: model switch and line, YOLO26 plate detection, ByteTrack and split tracks, OCR voting, crossings, vehicle matching, repeats and sending |
+| `ANPR/AnprVideoDataFlow` | camera → MediaMTX → detector → MJPEG / backend, plus the admin drawing the line |
+| `ANPR/AnprCrossingStates` | how a crossing waits for its plate and vehicle, moves with a split track, and is sent or dropped |
+| `ANPR/AnprVehicleSequence` | admin setup, the settings refresh, the registry check and one vehicle event to the security officer |
 
 Update the matching diagram in the same change when the pipeline, the alert
 rules or the container layout change.
@@ -333,6 +431,8 @@ rules or the container layout change.
 | --- | --- |
 | Fire detector | GPU, **534 MiB** VRAM, **~16.8 fps** |
 | Intrusion detector | CPU/ONNX, **733 MB** image, **~2.3 fps** |
+| ANPR detector | GPU plates + vehicles, CPU OCR, **~14 fps** in the container on the 1080×1920 sample |
+| ANPR image | 14.1 GB, ~12.4 GB of it shared with the fire image when built on it |
 | GPU headroom | 3508 MiB free of 4096 |
 | Fire image | 12.4 GB (CUDA wheels) |
 
@@ -351,14 +451,15 @@ rules or the container layout change.
    the `cu126` index (~12 GB image) and set `INTRUSION_DEVICE=0` with
    `gpus: all`. Maxwell (sm_52) pins it to `torch==2.14.0+cu126`; PyTorch
    dropped sm_5x from its 12.8/12.9 builds.
-3. **Dwell timing assumes source fps.** `dwell_frames` is computed from the
-   source frame rate, not the achieved inference rate. At 2.3 fps the 0.35 s
-   window covers far fewer frames than intended, so confirmation takes longer
-   in wall-clock terms than configured. Moving to GPU largely removes this.
+3. **Tracker memory is still in frames.** ByteTrack's `track_buffer` (90
+   frames, 3.75 s at 24 fps) is counted in processed frames, so at ~2 fps on a
+   live CPU stream it holds a lost track for ~45 s. The alarm rules no longer
+   depend on it; moving to GPU brings it back near its intended length.
 4. **Unpinned dependencies.** Both requirements files pin `torch` but leave
    `torchvision`, `ultralytics` and `opencv-python-headless` floating. A
    rebuild months from now could pull an incompatible `torchvision`.
-5. **ANPR model not containerised.** Needs its own image because of
-   `paddlepaddle`. The pattern is now proven twice.
-6. **Both detectors watch the same camera.** Fine for testing; point them at
-   different sources for a real demo.
+5. **ANPR verified on one clip.** The service was run on the 14.9 s one-car
+   sample video only. A real gate camera, several vehicles at once, night
+   footage and plates that only become readable past the line are untested.
+6. **All detectors default to the same webcam feed.** Fine for testing; point
+   them at different sources for a real demo.

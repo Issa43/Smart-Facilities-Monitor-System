@@ -131,7 +131,7 @@ Details: [Fire & Smoke Deployment README](Models/SmokeAndFireModel/Deployment/RE
 | **Classify vehicle** | Each plate is matched to the smallest enclosing vehicle box from a COCO YOLO model, then smoothed by majority vote into `CAR` / `Truck`. |
 | **Direction** | Logs an **IN/OUT** crossing event when a tracked plate crosses a configurable virtual line, debounced over consecutive frames. |
 
-The pipeline accepts a video, a photo, or a folder of both, and processes a 1080 × 1920 video at about 18 fps on a laptop NVIDIA Quadro M2200 with the preview window open. All file locations are in `paths.py` and can be overridden with `ALPR_*` environment variables for container deployment. Details: [ALPR Deployment README](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md).
+The pipeline accepts a video, a photo, or a folder of both, and processes a 1080 × 1920 video at about 18 fps on a laptop NVIDIA Quadro M2200 with the preview window open. All file locations are in `paths.py` and can be overridden with `ALPR_*` environment variables. The same pipeline also runs as a Docker service (`headless.py`) that reports every vehicle crossing the camera's virtual line to the backend as an entry or exit, checked against the authorized-vehicle registry. Details: [ALPR Deployment README](Models/LicensePLatesDetectionModel%28with_OCR%29/Deployment/README.md).
 
 ---
 
@@ -346,7 +346,7 @@ Each pipeline opens an OpenCV window; press **`q`** to stop.
 * [x] Connect the React dashboard to the live backend (legacy fixtures retired behind an explicit dev flag).
 * [ ] Wire the detection pipelines into the backend AI layer (`apps/ai_engine` is currently a scaffold).
 * [x] Implement WebSocket connection for real-time web notifications (Django Channels + Redis).
-* [ ] Replace interactive OpenCV windows with headless production entry points.
+* [x] Replace interactive OpenCV windows with headless production entry points (fire/smoke, intrusion and ANPR each run as a Docker service).
 * [x] Deploy Docker containerization for production environments (backend, Postgres, Redis, Celery worker + beat).
 
 ---

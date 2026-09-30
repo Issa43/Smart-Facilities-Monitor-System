@@ -38,6 +38,43 @@ describe('RoiDrawer', () => {
     await waitFor(() => expect(screen.getByText('الصورة من كاميرا أخرى')).toBeTruthy())
   })
 
+  it('draws a line from two clicks, and a third click starts a new line', () => {
+    const onChange = vi.fn()
+    const line = [
+      { x: 0, y: 500 },
+      { x: 1000, y: 500 },
+    ]
+    render(
+      <RoiDrawer mode="line" cameraId="camera-1" existing={[]} points={line} onChange={onChange} />,
+    )
+    loadImage(1280, 720)
+
+    const canvas = screen.getByRole('img', { name: 'ارسم الخط الافتراضي بالنقر على الصورة' })
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 360 }) as DOMRect
+    fireEvent.click(canvas, { clientX: 100, clientY: 50 })
+
+    expect(onChange).toHaveBeenCalledWith([{ x: 200, y: 100 }])
+    expect(screen.getByText('IN')).toBeTruthy()
+    expect(screen.getByText('الخط جاهز للحفظ — السهم يشير إلى جهة الدخول')).toBeTruthy()
+  })
+
+  it('draws on the frame of the detector it is given', () => {
+    render(
+      <RoiDrawer
+        mode="line"
+        streamUrl="http://localhost:8092/stream"
+        cameraId="camera-1"
+        existing={[]}
+        points={[]}
+        onChange={vi.fn()}
+      />,
+    )
+
+    const image = screen.getByAltText('صورة الكاميرا الحالية') as HTMLImageElement
+    expect(image.src).toContain('http://localhost:8092/snapshot/raw')
+    expect(fetch).toHaveBeenCalledWith('http://localhost:8092/info')
+  })
+
   it('explains how to recover when the detector is not running', () => {
     render(<RoiDrawer cameraId="camera-1" existing={[]} points={[]} onChange={vi.fn()} />)
     fireEvent.error(screen.getByAltText('صورة الكاميرا الحالية'))

@@ -373,6 +373,66 @@ def test_virtual_line_human_configuration_and_machine_scope(
     assert [row["id"] for row in results(read)] == [created.data["id"]]
 
 
+def test_a_camera_can_get_a_new_line_after_its_line_was_disabled(
+    api_client, super_admin_user
+):
+    # A camera has one line (one-to-one) and disabling is soft, so a new line
+    # reuses the disabled row instead of colliding with it.
+    _, camera = make_camera(super_admin_user, "line-redraw")
+    api_client.force_authenticate(super_admin_user)
+    url = reverse("api_v1:virtual-line-list")
+    first = api_client.post(
+        url,
+        {"camera": str(camera.pk), "line_start": {"x": 0, "y": 50}, "line_end": {"x": 100, "y": 50}},
+        format="json",
+    )
+    assert first.status_code == 201, first.data
+    assert api_client.delete(f"{url}{first.data['id']}/").status_code == 204
+
+    redrawn = api_client.post(
+        url,
+        {"camera": str(camera.pk), "line_start": {"x": 0, "y": 80}, "line_end": {"x": 100, "y": 90}},
+        format="json",
+    )
+
+    assert redrawn.status_code == 201, redrawn.data
+    line = VirtualLine.objects.get(camera=camera)
+    assert (line.is_active, line.line_start, line.line_end) == (
+        True,
+        {"x": 0, "y": 80},
+        {"x": 100, "y": 90},
+    )
+
+
+def test_a_second_line_while_one_is_active_is_still_rejected(
+    api_client, super_admin_user
+):
+    _, camera = make_camera(super_admin_user, "line-twice")
+    api_client.force_authenticate(super_admin_user)
+    url = reverse("api_v1:virtual-line-list")
+    body = {"camera": str(camera.pk), "line_start": {"x": 0, "y": 50}, "line_end": {"x": 100, "y": 50}}
+    assert api_client.post(url, body, format="json").status_code == 201
+    assert api_client.post(url, body, format="json").status_code == 400
+
+
+def test_an_roi_can_get_a_new_schedule_after_its_schedule_was_disabled(
+    api_client, super_admin_user
+):
+    _, camera = make_camera(super_admin_user, "schedule-redo")
+    roi = make_roi(camera, super_admin_user)
+    api_client.force_authenticate(super_admin_user)
+    url = reverse("api_v1:restricted-schedule-list")
+    body = {"roi": str(roi.pk), "always_restricted": True, "timezone_name": "UTC"}
+    first = api_client.post(url, body, format="json")
+    assert first.status_code == 201, first.data
+    assert api_client.delete(f"{url}{first.data['id']}/").status_code == 204
+
+    again = api_client.post(url, body, format="json")
+
+    assert again.status_code == 201, again.data
+    assert RestrictedZoneSchedule.all_objects.get(roi=roi).is_active is True
+
+
 def test_authorized_vehicle_current_lookup_and_history_are_independent(
     api_client, super_admin_user
 ):

@@ -46,6 +46,7 @@ services:
         # port of the detector, not at the container name.
         VITE_CAMERA_STREAM_URL: ${VITE_CAMERA_STREAM_URL:-http://localhost:8090/stream}
         VITE_INTRUSION_STREAM_URL: ${VITE_INTRUSION_STREAM_URL:-http://localhost:8091/stream}
+        VITE_ANPR_STREAM_URL: ${VITE_ANPR_STREAM_URL:-http://localhost:8092/stream}
     image: sflms-frontend:dev
     ports:
       - "${FRONTEND_PORT:-8080}:8080"
@@ -194,7 +195,10 @@ services:
       # value fails at inference. To change it, re-export:
       #   docker compose run --rm intrusion python -c "from ultralytics import       #     YOLO; YOLO('yolo26n.pt').export(format='onnx', imgsz=N,       #     dynamic=False, simplify=True)"
       INTRUSION_IMGSZ: ${INTRUSION_IMGSZ:-1280}
-      INTRUSION_DWELL_SECONDS: ${INTRUSION_DWELL_SECONDS:-0.35}
+      # Seconds inside a restricted ROI before an alarm, and seconds outside
+      # before the same person can raise another (see intrusion_core.py).
+      INTRUSION_DWELL_SECONDS: ${INTRUSION_DWELL_SECONDS:-1.0}
+      INTRUSION_REARM_SECONDS: ${INTRUSION_REARM_SECONDS:-2.0}
       # CPU by default, and the image is built CPU-only to match (see
       # requirements.txt). Inference runs through ONNX Runtime, which is ~4.6x
       # faster than PyTorch here at the same resolution.
@@ -217,6 +221,63 @@ services:
         condition: service_healthy
       mediamtx:
         condition: service_started
+    restart: unless-stopped
+    networks:
+      - sflms_internal
+
+  # ANPR detector (plate reading at a gate). Opt-in like the others:
+  #   docker compose --profile anpr up -d anpr
+  #
+  # A third AI ingestion client: it reads frames from MediaMTX, writes
+  # snapshots into the shared ./protected_media, and POSTs vehicle_entry /
+  # vehicle_exit events with its OWN machine credential and camera id. The
+  # camera needs the anpr model switched on and a virtual line drawn in the
+  # admin console; the credential also lets it ask the backend whether a
+  # plate is in the authorized-vehicle registry.
+  anpr:
+    profiles: ["anpr"]
+    build:
+      context: ./Models/LicensePLatesDetectionModel(with_OCR)/Deployment
+      dockerfile: Dockerfile
+      args:
+        # Set ANPR_BASE_IMAGE=sflms-detector:dev to reuse the fire/smoke
+        # image's torch + CUDA layers instead of downloading them again.
+        BASE_IMAGE: ${ANPR_BASE_IMAGE:-python:3.12-slim}
+    image: sflms-anpr:dev
+    environment:
+      SFLMS_API_URL: http://backend:8000/api/v1/camera-events/
+      SFLMS_KEY_ID: ${ANPR_KEY_ID:-}
+      SFLMS_SECRET: ${ANPR_SECRET:-}
+      SFLMS_CAMERA_ID: ${ANPR_CAMERA_ID:-}
+      SFLMS_FACILITY_ID: ${SFLMS_FACILITY_ID:-}
+      SFLMS_PROTECTED_MEDIA_ROOT: /app/protected_media
+      # The virtual line and the model switch come from the admin console and
+      # are re-read this often.
+      CONFIG_REFRESH_SECONDS: ${CONFIG_REFRESH_SECONDS:-30}
+      VIDEO_SOURCE: ${ANPR_VIDEO_SOURCE:-rtsp://mediamtx:8554/laptop}
+      VIDEO_LOOP: ${ANPR_VIDEO_LOOP:-1}
+      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
+      # The same plate crossing the same way again within this many seconds
+      # is one vehicle whose track was split, not a second event.
+      ANPR_REPEAT_SECONDS: ${ANPR_REPEAT_SECONDS:-30}
+      # Plate and vehicle models on the GPU next to the fire detector; OCR
+      # runs on the CPU either way (see requirements-service.txt).
+      DETECTOR_DEVICE: ${ANPR_DEVICE:-0}
+      STREAM_PORT: 8090
+    # Distinct host port: `detector` publishes 8090 and `intrusion` 8091.
+    ports:
+      - "${ANPR_STREAM_PORT:-8092}:8090"
+    volumes:
+      - ./protected_media:/app/protected_media
+      - ./Models/LicensePLatesDetectionModel(with_OCR)/Deployment/samples:/samples:ro
+      # PaddleOCR's recognition model, downloaded on first start.
+      - anpr_paddlex:/paddlex-cache
+    depends_on:
+      backend:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+    gpus: all
     restart: unless-stopped
     networks:
       - sflms_internal
@@ -293,3 +354,7 @@ services:
     volumes:
       - .:/app
       - celery_beat_data:/var/lib/celery
+
+volumes:
+  # PaddleOCR model cache for the anpr service.
+  anpr_paddlex:
