@@ -1,14 +1,16 @@
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.assets.models import Asset
 from apps.audit.services import record_audit
-from apps.facilities.models import Facility
+from apps.facilities.models import Facility, FacilityAssignment
+from apps.maintenance.models import Fault
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_user, notify_users
 from apps.users.models import Role, User
 
-from .models import Incident, IncidentAction, IncidentNote, SecurityAlert
+from .models import Camera, Incident, IncidentAction, IncidentNote, SecurityAlert
 from .realtime import schedule_security_alert_updated_broadcast
 
 
@@ -420,3 +422,238 @@ def record_incident_note(*, incident_id, actor, body):
     note = IncidentNote(incident=incident, author=actor, created_by=actor, body=body.strip())
     note.full_clean(); note.save()
     return note
+
+
+MAX_REQUIRED_CAMERA_COUNT = 200
+CAMERA_MAINTENANCE_FAULT_TYPE = "camera_maintenance"
+OPEN_CAMERA_FAULT_STATUSES = (Fault.Status.REPORTED, Fault.Status.INVESTIGATING)
+
+
+def _camera_code_prefix(facility):
+    return f"CAM-{facility.pk.hex[:12].upper()}-"
+
+
+def _next_camera_number(facility):
+    """Next free sequence for the Facility, counting soft-deleted rows too."""
+    prefix = _camera_code_prefix(facility)
+    identifiers = list(
+        Camera.all_objects.filter(code__startswith=prefix).values_list("code", flat=True)
+    ) + list(
+        Asset.all_objects.filter(serial_number__startswith=prefix).values_list(
+            "serial_number", flat=True
+        )
+    )
+    numbers = [
+        int(identifier[len(prefix):])
+        for identifier in identifiers
+        if identifier[len(prefix):].isdigit()
+    ]
+    return max(numbers, default=0) + 1
+
+
+def _create_camera_asset(*, facility, serial_number, name, location, actor):
+    asset = Asset(
+        facility=facility,
+        name=name,
+        asset_type="camera",
+        category="security",
+        serial_number=serial_number,
+        manufacturer="Unspecified",
+        model="Unspecified",
+        location_inside_facility=location or "Unassigned",
+        installation_date=timezone.localdate(),
+        created_by=actor,
+    )
+    asset.full_clean()
+    asset.save()
+    return asset
+
+
+@transaction.atomic
+def reconcile_facility_cameras(*, facility_id, required, actor, request=None):
+    """Bring a Facility's active Cameras up to an absolute required count.
+
+    Missing Cameras are created, each paired with a camera Asset so the
+    existing Fault and MaintenanceOrder workflow can target it. Surplus
+    Cameras are only reported: nothing is deleted or deactivated.
+    """
+    _require_active_actor(actor)
+    if (
+        isinstance(required, bool)
+        or not isinstance(required, int)
+        or not 0 <= required <= MAX_REQUIRED_CAMERA_COUNT
+    ):
+        raise ValidationError(
+            {
+                "required_camera_count": (
+                    f"The required camera count must be between 0 and "
+                    f"{MAX_REQUIRED_CAMERA_COUNT}."
+                )
+            }
+        )
+    facility = Facility.all_objects.select_for_update().get(
+        pk=facility_id,
+        is_active=True,
+    )
+    if facility.status == Facility.Status.DECOMMISSIONED:
+        raise ValidationError(
+            {"status": "Cameras cannot be provisioned for a decommissioned facility."}
+        )
+
+    # Counted only after the Facility row lock, so concurrent requests see
+    # each other's Cameras and the absolute target is never exceeded.
+    previous_required = facility.required_camera_count
+    existing = Camera.objects.filter(facility=facility).count()
+    to_create = max(0, required - existing)
+    prefix = _camera_code_prefix(facility)
+    first_number = _next_camera_number(facility) if to_create else 0
+    created = []
+    for number in range(first_number, first_number + to_create):
+        code = f"{prefix}{number:03d}"
+        label = f"Camera {number:03d}"
+        asset = _create_camera_asset(
+            facility=facility,
+            serial_number=code,
+            name=label,
+            location="Unassigned",
+            actor=actor,
+        )
+        camera = Camera(
+            facility=facility,
+            asset=asset,
+            code=code,
+            name=label,
+            zone="Unassigned",
+            created_by=actor,
+        )
+        camera.full_clean()
+        camera.save()
+        created.append(camera)
+
+    if previous_required != required:
+        facility.required_camera_count = required
+        facility.full_clean()
+        facility.save(update_fields=["required_camera_count", "updated_at"])
+
+    surplus = max(0, existing - required)
+    if created or previous_required != required:
+        record_audit(
+            actor=actor,
+            action="facility.cameras_reconciled",
+            entity=facility,
+            before={
+                "required_camera_count": previous_required,
+                "active_camera_count": existing,
+            },
+            after={
+                "required_camera_count": required,
+                "active_camera_count": existing + len(created),
+                "created_count": len(created),
+                "surplus_count": surplus,
+            },
+            request=request,
+        )
+    return {
+        "facility": facility,
+        "previous_required": previous_required,
+        "existing": existing,
+        "created": created,
+        "surplus": surplus,
+    }
+
+
+@transaction.atomic
+def report_camera_maintenance(*, camera_id, actor, description, severity, request=None):
+    """Raise (or return the already open) camera-maintenance Fault.
+
+    Returns ``(fault, created)``. The Fault enters the existing Operations
+    Manager workflow in the reported state; nothing else is changed here.
+    """
+    _require_active_actor(actor)
+    description = (description or "").strip()
+    if not description:
+        raise ValidationError({"description": "A maintenance description is required."})
+    camera = (
+        Camera.all_objects.select_for_update(of=("self",))
+        .select_related("facility", "asset")
+        .get(pk=camera_id, is_active=True)
+    )
+    facility = camera.facility
+    if actor.role.name != Role.SUPER_ADMIN and not FacilityAssignment.objects.filter(
+        facility=facility,
+        user=actor,
+        is_active=True,
+    ).exists():
+        raise PermissionDenied("The camera is outside the actor's facility scope.")
+    if not facility.is_active:
+        raise ValidationError({"facility": "The camera facility must be active."})
+
+    if camera.asset_id is None:
+        serial_number = camera.code
+        if Asset.all_objects.filter(serial_number=serial_number).exists():
+            serial_number = f"CAM-ASSET-{camera.pk.hex[:12].upper()}"
+        camera.asset = _create_camera_asset(
+            facility=facility,
+            serial_number=serial_number,
+            name=camera.name,
+            location=camera.zone,
+            actor=actor,
+        )
+        camera.full_clean()
+        camera.save(update_fields=["asset", "updated_at"])
+
+    open_fault = (
+        Fault.objects.filter(
+            asset=camera.asset,
+            fault_type=CAMERA_MAINTENANCE_FAULT_TYPE,
+            status__in=OPEN_CAMERA_FAULT_STATUSES,
+        )
+        .order_by("created_at")
+        .first()
+    )
+    if open_fault is not None:
+        return open_fault, False
+
+    fault = Fault(
+        asset=camera.asset,
+        fault_type=CAMERA_MAINTENANCE_FAULT_TYPE,
+        description=description,
+        severity=severity,
+        reported_by=actor,
+        created_by=actor,
+    )
+    fault.full_clean()
+    fault.save()
+    record_audit(
+        actor=actor,
+        action="camera.maintenance_reported",
+        entity=fault,
+        after={
+            "camera_id": str(camera.pk),
+            "camera_code": camera.code,
+            "asset_id": str(camera.asset_id),
+            "severity": fault.severity,
+            "status": fault.status,
+        },
+        request=request,
+    )
+    managers = User.objects.filter(
+        status=User.STATUS_ACTIVE,
+        role__name=Role.OPERATIONS_MANAGER,
+        facility_assignments__facility=facility,
+        facility_assignments__is_active=True,
+    ).distinct()
+    notify_users(
+        managers,
+        title="Camera maintenance reported",
+        body=(
+            f"{fault.reference}: {camera.name} ({camera.code}) at "
+            f"{facility.name} needs maintenance."
+        ),
+        category=Notification.Category.MAINTENANCE,
+        tone=Notification.Tone.WARNING,
+        href="/operations/faults",
+        source=fault,
+        deduplication_key=f"camera-fault:{fault.pk}",
+    )
+    return fault, True

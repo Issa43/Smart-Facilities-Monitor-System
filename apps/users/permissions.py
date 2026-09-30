@@ -12,6 +12,7 @@ PERMISSION_CATALOG = {
     "incident.close", "incident.escalate", "report.generate", "report.all",
     "user.manage", "role.manage", "audit.view", "settings.manage",
     "safety.view", "safety.manage", "safety.broadcast",
+    "camera.maintenance_report",
 }
 
 

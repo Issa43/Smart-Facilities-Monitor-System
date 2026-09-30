@@ -1,7 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, UserCog } from 'lucide-react'
+import { Camera, MapPin, UserCog } from 'lucide-react'
 import type { Project, ProjectStatus } from '@/types'
 import { FACILITY_TYPE_LABELS, PROJECT_STATUS_LABELS, PROJECT_STATUS_TONE } from '@/types'
 import { formatDate, formatNumber, formatPercent } from '@/lib/format'
@@ -11,12 +11,16 @@ import { listUsers } from '@/api/users'
 import { useListFilter } from '@/hooks/useListFilter'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/Badge/Badge'
-import { LinkButton } from '@/components/ui/Button/Button'
+import { Button, LinkButton } from '@/components/ui/Button/Button'
 import { FilterBar, SearchInput, Toolbar, ViewToggle } from '@/components/ui/Controls/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable/DataTable'
 import { EntityCard, EntityGrid } from '@/components/ui/EntityCard/EntityCard'
 import { ErrorState, ProgressBar, StateCard } from '@/components/ui/Feedback/Feedback'
+import { Modal } from '@/components/ui/Modal/Modal'
+import { Panel } from '@/components/ui/Panel/Panel'
+import { Section } from '@/components/ui/Display/Display'
 import { useViewMode } from '@/hooks/useViewMode'
+import { FacilityCameraRequirementPanel } from '@/features/operations/components/FacilityCameraRequirementPanel'
 
 type StatusFilter = ProjectStatus | 'all'
 
@@ -31,6 +35,7 @@ const FILTERS: { value: StatusFilter; label: string }[] = [
 export function AdminProjectsPage() {
   const navigate = useNavigate()
   const [view, setView] = useViewMode('admin-projects')
+  const [cameraProject, setCameraProject] = useState<Project | null>(null)
 
   const projectsQuery = useQuery({ queryKey: qk.projects.list(), queryFn: () => listProjects() })
   const usersQuery = useQuery({ queryKey: qk.users.all, queryFn: listUsers })
@@ -112,6 +117,9 @@ export function AdminProjectsPage() {
       ),
     },
   ]
+  const operationalProjects = (projectsQuery.data ?? []).filter(
+    (project) => project.status === 'operational' && project.facilityId,
+  )
 
   if (projectsQuery.isError) return <ErrorState error={projectsQuery.error} />
 
@@ -139,6 +147,25 @@ export function AdminProjectsPage() {
         </div>
         <ViewToggle value={view} onChange={setView} />
       </Toolbar>
+
+      {operationalProjects.length > 0 && (
+        <Section>
+          <Panel title="كاميرات المشاريع التشغيلية">
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {operationalProjects.map((project) => (
+                <Button
+                  key={project.id}
+                  variant="subtle"
+                  size="sm"
+                  onClick={() => setCameraProject(project)}
+                >
+                  <Camera size={14} /> {project.name}
+                </Button>
+              ))}
+            </div>
+          </Panel>
+        </Section>
+      )}
 
       {!projectsQuery.isPending && filtered.length === 0 ? (
         <StateCard
@@ -187,6 +214,21 @@ export function AdminProjectsPage() {
           ))}
         </EntityGrid>
       )}
+
+      <Modal
+        open={Boolean(cameraProject?.facilityId)}
+        onClose={() => setCameraProject(null)}
+        title="كاميرات المنشأة التشغيلية"
+        subtitle={cameraProject?.name}
+        size="lg"
+      >
+        {cameraProject?.facilityId && (
+          <FacilityCameraRequirementPanel
+            facilityId={cameraProject.facilityId}
+            showCameras={false}
+          />
+        )}
+      </Modal>
     </>
   )
 }

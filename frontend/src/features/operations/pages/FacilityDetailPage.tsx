@@ -10,6 +10,7 @@ import {
   FACILITY_TYPE_LABELS,
   FAULT_STATUS_LABELS,
   FAULT_STATUS_TONE,
+  faultTypeLabel,
   PRIORITY_LABELS,
   PRIORITY_TONE,
   SEVERITY_LABELS,
@@ -37,6 +38,7 @@ import { KpiCard } from '@/components/ui/KpiCard/KpiCard'
 import { DonutChart, ProgressRing } from '@/components/charts/Charts'
 import { sortByTone } from '@/lib/tone'
 import styles from '@/features/shared/ProjectDetail.module.css'
+import { FacilityCameraRequirementPanel } from '../components/FacilityCameraRequirementPanel'
 
 export function FacilityDetailPage() {
   const { facilityId = '' } = useParams<{ facilityId: string }>()
@@ -149,6 +151,14 @@ export function FacilityDetailPage() {
                 { label: 'تاريخ بدء التشغيل', value: formatDate(facility.operationStartDate) },
                 { label: 'مدير التشغيل', value: userName(facility.operationsManagerId) },
                 { label: 'عدد الأصول', value: formatNumber(assets.length) },
+                {
+                  label: 'الكاميرات (الحالية / المطلوبة)',
+                  value: `${formatNumber(facility.cameraCount)} / ${
+                    facility.requiredCameraCount === null
+                      ? 'غير محدد'
+                      : formatNumber(facility.requiredCameraCount)
+                  }`,
+                },
                 { label: 'متوسط صحة الأصول', value: formatPercent(averageHealth) },
                 {
                   label: 'الجاهزية التشغيلية',
@@ -275,6 +285,12 @@ export function FacilityDetailPage() {
             ),
           },
           {
+            id: 'cameras',
+            label: 'الكاميرات',
+            count: facility.cameraCount,
+            content: <FacilityCameraRequirementPanel facilityId={facility.id} />,
+          },
+          {
             id: 'maintenance',
             label: 'الصيانة',
             count: workOrders.length,
@@ -353,7 +369,7 @@ export function FacilityDetailPage() {
                     sortValue: (f) => f.reference,
                     render: (f) => (
                       <div>
-                        <div style={{ fontWeight: 700 }}>{f.faultType}</div>
+                        <div style={{ fontWeight: 700 }}>{faultTypeLabel(f.faultType)}</div>
                         <div
                           className="mono"
                           style={{ fontSize: 11.5, color: 'var(--text-muted)' }}

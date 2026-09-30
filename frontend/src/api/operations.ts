@@ -1,13 +1,22 @@
-import type { Asset, Facility, Fault, Priority, WorkOrder } from '@/types'
+import type {
+  Asset,
+  Facility,
+  FacilityCameraRequirement,
+  Fault,
+  Priority,
+  WorkOrder,
+} from '@/types'
 import { apiRequest, fetchAllPages, unsupported, type PaginatedResponse } from './client'
 import {
   assetFromDto,
+  facilityCameraRequirementFromDto,
   facilityFromDto,
   faultFromDto,
   faultSeverityToDto,
   priorityToDto,
   workOrderFromDto,
   type AssetDto,
+  type FacilityCameraRequirementDto,
   type FacilityDto,
   type FacilityMonitoringDto,
   type FaultDto,
@@ -36,6 +45,28 @@ export async function getFacility(id: string): Promise<Facility> {
 
 export async function getFacilityMonitoring(id: string): Promise<FacilityMonitoringDto> {
   return apiRequest<FacilityMonitoringDto>(`/facilities/${id}/monitoring/`)
+}
+
+export async function getFacilityCameraRequirement(id: string): Promise<FacilityCameraRequirement> {
+  return facilityCameraRequirementFromDto(
+    await apiRequest<FacilityCameraRequirementDto>(`/facilities/${id}/camera-requirement/`),
+  )
+}
+
+/**
+ * Sets the absolute camera count. The server creates only the missing cameras,
+ * so repeating the same value is harmless, and lowering it never removes any.
+ */
+export async function setFacilityCameraRequirement(
+  id: string,
+  requiredCameraCount: number,
+): Promise<FacilityCameraRequirement> {
+  return facilityCameraRequirementFromDto(
+    await apiRequest<FacilityCameraRequirementDto>(`/facilities/${id}/camera-requirement/`, {
+      method: 'PUT',
+      body: { required_camera_count: requiredCameraCount },
+    }),
+  )
 }
 
 /* ========================================================================== */

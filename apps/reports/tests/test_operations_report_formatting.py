@@ -17,6 +17,8 @@ from apps.reports.services import (
     REPORT_ACCENT,
     REPORT_ACCENT_DARK,
     REPORT_ACCENT_LIGHT,
+    SECURITY_REPORT_MODULES,
+    SECURITY_REPORT_PALETTE,
     _argb,
     _operations_column_label,
     _render_operations_pdf,
@@ -392,6 +394,10 @@ def test_real_fault_data_completes_pdf_and_xlsx_generation(fault_report_records)
 # through to an unstyled generator that emitted latin-1 encoded plain text for
 # PDF and a style-less sheet for XLSX. They now render with the same structure
 # and green accent as every other SFLMS report.
+#
+# Security reports (security, alerts, response) keep that same structure but
+# carry the Security identity: a red palette and "SFLMS Security Report" in the
+# header band and page frame instead of the Operations name.
 # ---------------------------------------------------------------------------
 
 FAMILY_MODULES = (
@@ -416,16 +422,17 @@ def test_every_module_pdf_uses_the_shared_report_structure(module):
 
     assert content.startswith(b"%PDF-")
     # Same page frame, header band and footer as the rest of the family.
+    report_name = "Security Report" if module in SECURITY_REPORT_MODULES else "Operations Report"
     assert title in text
-    assert "SFLMS Operations Report" in text
+    assert f"SFLMS {report_name}" in text
     assert "Records" in text
     assert "row-1" in text and "Sample record" in text
-    assert all("SFLMS | Operations Report" in (page.extract_text() or "") for page in reader.pages)
+    assert all(f"SFLMS | {report_name}" in (page.extract_text() or "") for page in reader.pages)
     assert all(float(page.mediabox.width) > float(page.mediabox.height) for page in reader.pages)
 
 
 @pytest.mark.parametrize("module", FAMILY_MODULES)
-def test_every_module_xlsx_is_styled_with_the_green_accent(module):
+def test_every_module_xlsx_is_styled_with_its_family_accent(module):
     title = f"{module.label} Report"
     columns = ("id", "name", "status")
     rows = [{"id": "row-1", "name": "Sample record", "status": "open"}]
@@ -438,8 +445,13 @@ def test_every_module_xlsx_is_styled_with_the_green_accent(module):
 
     # A styles part is what the old generic writer never produced.
     assert "xl/styles.xml" in names
-    assert _argb(REPORT_ACCENT) in styles_xml
-    assert _argb(REPORT_ACCENT_DARK) in styles_xml
+    if module in SECURITY_REPORT_MODULES:
+        assert _argb(SECURITY_REPORT_PALETTE["accent"]) in styles_xml
+        assert _argb(SECURITY_REPORT_PALETTE["accent_dark"]) in styles_xml
+        assert _argb(REPORT_ACCENT) not in styles_xml
+    else:
+        assert _argb(REPORT_ACCENT) in styles_xml
+        assert _argb(REPORT_ACCENT_DARK) in styles_xml
     assert title in worksheet_xml
     assert "row-1" in worksheet_xml and "Sample record" in worksheet_xml
     # Column widths and a frozen header are part of the family's sheet setup.

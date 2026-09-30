@@ -22,6 +22,7 @@ import {
   type IncidentDto,
   type SecurityAlertDto,
 } from './adapters/security'
+import { faultSeverityFromDto, faultSeverityToDto, type FaultDto } from './adapters/operations'
 
 async function linkedIncidentIds(): Promise<Map<string, string>> {
   const incidents = await fetchAllPages<IncidentDto>('/security/incidents/')
@@ -194,6 +195,53 @@ export async function listCameras(): Promise<SecurityCamera[]> {
     streamAvailable: camera.stream_available,
     lastSeenAt: camera.last_seen_at,
   }))
+}
+
+export interface CameraMaintenanceReport {
+  id: string
+  reference: string
+  cameraId: string
+  status: 'reported' | 'investigating' | 'resolved' | 'closed'
+  severity: Severity
+  description: string
+  /** false when an open report for this camera already existed. */
+  created: boolean
+}
+
+interface CameraMaintenanceReportDto {
+  id: string
+  reference: string
+  camera_id: string
+  status: CameraMaintenanceReport['status']
+  severity: FaultDto['severity']
+  description: string
+  created: boolean
+}
+
+/** Raises a Fault for Operations; repeating it returns the open report. */
+export async function reportCameraMaintenance(
+  cameraId: string,
+  input: { description: string; severity: Severity },
+): Promise<CameraMaintenanceReport> {
+  const dto = await apiRequest<CameraMaintenanceReportDto>(
+    `/security/cameras/${cameraId}/report-maintenance/`,
+    {
+      method: 'POST',
+      body: {
+        description: input.description,
+        severity: faultSeverityToDto[input.severity],
+      },
+    },
+  )
+  return {
+    id: dto.id,
+    reference: dto.reference,
+    cameraId: dto.camera_id,
+    status: dto.status,
+    severity: faultSeverityFromDto[dto.severity],
+    description: dto.description,
+    created: dto.created,
+  }
 }
 
 export interface SecurityFacility {

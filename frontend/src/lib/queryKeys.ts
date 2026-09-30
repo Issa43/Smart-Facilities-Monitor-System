@@ -49,6 +49,7 @@ export const qk = {
     all: ['facilities'] as const,
     list: ['facilities', 'list'] as const,
     detail: (id: string) => ['facilities', 'detail', id] as const,
+    cameraRequirement: (id: string) => ['facilities', 'camera-requirement', id] as const,
   },
   assets: {
     all: ['assets'] as const,

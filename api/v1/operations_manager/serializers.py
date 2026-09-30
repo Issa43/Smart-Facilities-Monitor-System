@@ -9,7 +9,8 @@ from apps.facilities.models import Facility
 from apps.maintenance.models import Fault, MaintenanceOrder, MaintenanceTask
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_user
-from apps.security.models import Incident, IncidentAction
+from apps.security.models import Camera, Incident, IncidentAction
+from apps.security.services import MAX_REQUIRED_CAMERA_COUNT
 from apps.users.models import Role, User
 
 from .permissions import facilities_for_user
@@ -27,6 +28,7 @@ class FacilityReadSerializer(serializers.ModelSerializer):
     created_by_id = serializers.UUIDField(read_only=True)
     operations_manager_id = serializers.SerializerMethodField()
     asset_count = serializers.IntegerField(read_only=True, default=0)
+    camera_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Facility
@@ -40,10 +42,13 @@ class FacilityReadSerializer(serializers.ModelSerializer):
             "status",
             "operations_manager_id",
             "asset_count",
+            "required_camera_count",
+            "camera_count",
             "created_by_id",
             "created_at",
             "updated_at",
         ]
+        read_only_fields = ["required_camera_count"]
 
     @extend_schema_field(OpenApiTypes.UUID)
     def get_operations_manager_id(self, obj):
@@ -54,6 +59,39 @@ class FacilityReadSerializer(serializers.ModelSerializer):
             ).order_by("created_at")
         assignment = next(iter(assignments), None)
         return assignment.user_id if assignment else None
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_camera_count(self, obj):
+        count = getattr(obj, "camera_count", None)
+        if count is None:
+            count = obj.cameras.filter(is_active=True).count()
+        return count
+
+
+class FacilityCameraSerializer(serializers.ModelSerializer):
+    facility_id = serializers.UUIDField(read_only=True)
+    asset_id = serializers.UUIDField(read_only=True)
+
+    class Meta:
+        model = Camera
+        fields = [
+            "id",
+            "facility_id",
+            "asset_id",
+            "code",
+            "name",
+            "zone",
+            "status",
+            "last_seen_at",
+            "created_at",
+        ]
+
+
+class FacilityCameraRequirementInputSerializer(serializers.Serializer):
+    required_camera_count = serializers.IntegerField(
+        min_value=0,
+        max_value=MAX_REQUIRED_CAMERA_COUNT,
+    )
 
 
 class AssetReadSerializer(serializers.ModelSerializer):

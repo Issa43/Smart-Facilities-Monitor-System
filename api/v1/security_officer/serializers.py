@@ -7,6 +7,7 @@ from rest_framework.reverse import reverse
 
 from apps.attachments.models import Attachment
 from apps.facilities.models import Facility
+from apps.maintenance.models import Fault
 from apps.security.models import Camera, Incident, IncidentAction, IncidentNote, SafetyDocument, SecurityAlert
 from apps.users.models import User
 
@@ -311,6 +312,36 @@ class CameraSerializer(serializers.ModelSerializer):
 
     def get_stream_available(self, obj) -> bool:
         return bool(obj.stream_reference and obj.status == Camera.Status.ONLINE)
+
+
+class CameraMaintenanceReportInputSerializer(serializers.Serializer):
+    description = serializers.CharField(allow_blank=False, trim_whitespace=True)
+    severity = serializers.ChoiceField(
+        choices=Fault.Severity.choices,
+        default=Fault.Severity.MODERATE,
+    )
+
+
+class CameraMaintenanceReportSerializer(serializers.ModelSerializer):
+    """The reporter's view of the Fault: no Operations workflow fields."""
+
+    asset_id = serializers.UUIDField(read_only=True)
+    reported_by_id = serializers.UUIDField(read_only=True)
+
+    class Meta:
+        model = Fault
+        fields = [
+            "id",
+            "reference",
+            "asset_id",
+            "fault_type",
+            "description",
+            "severity",
+            "status",
+            "discovery_time",
+            "reported_by_id",
+            "created_at",
+        ]
 
 
 class SafetyDocumentSerializer(serializers.ModelSerializer):

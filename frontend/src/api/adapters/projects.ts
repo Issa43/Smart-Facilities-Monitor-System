@@ -105,6 +105,7 @@ export function projectFromDto(dto: ProjectDto): Project {
     progressPercent: numberValue(dto.progress_percentage),
     currentStageName: dto.current_phase_name ?? '—',
     updatedAt: dto.updated_at,
+    facilityId: dto.facility_id,
   }
 }
 

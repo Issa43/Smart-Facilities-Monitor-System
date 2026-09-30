@@ -134,6 +134,8 @@ export interface Project {
   progressPercent: number
   currentStageName: string
   updatedAt: string
+  /** Set once the project is converted; operational projects always have one. */
+  facilityId?: string | null
 }
 
 export type StageStatus =
@@ -357,6 +359,36 @@ export interface Facility {
   uptimePercent: number | null
   /** Facility-assignment lookup is not exposed by the current backend. */
   operationsManagerId: string | null
+  /** null until an Operations Manager or Super Admin defines it. */
+  requiredCameraCount: number | null
+  /** Active cameras currently provisioned for the facility. */
+  cameraCount: number
+}
+
+export interface FacilityCamera {
+  id: string
+  facilityId: string
+  assetId: string | null
+  code: string
+  name: string
+  zone: string
+  status: 'online' | 'offline' | 'degraded' | 'maintenance'
+  lastSeenAt: string | null
+  createdAt: string
+}
+
+/** Result of reconciling a facility's cameras against its required count. */
+export interface FacilityCameraRequirement {
+  facilityId: string
+  requiredCameraCount: number | null
+  previousRequiredCameraCount: number | null
+  existing: number
+  created: number
+  /** Cameras above the requirement; they are reported, never removed. */
+  surplus: number
+  cameraCount: number
+  createdCameraIds: string[]
+  cameras: FacilityCamera[]
 }
 
 export type AssetStatus = 'operational' | 'under_maintenance' | 'out_of_service'
@@ -491,6 +523,15 @@ export const FAULT_STATUS_TONE: Record<FaultStatus, Tone> = {
   investigating: 'info',
   resolved: 'success',
   closed: 'success',
+}
+
+/** Fault types are free text; only system-raised ones carry a code needing a label. */
+export const FAULT_TYPE_LABELS: Record<string, string> = {
+  camera_maintenance: 'صيانة كاميرا',
+}
+
+export function faultTypeLabel(value: string): string {
+  return FAULT_TYPE_LABELS[value] ?? value
 }
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical'

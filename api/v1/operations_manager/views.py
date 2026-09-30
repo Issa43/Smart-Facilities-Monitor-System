@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, Prefetch
+from django.db.models import Avg, Count, Prefetch, Q
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
@@ -26,7 +26,8 @@ from apps.maintenance.services import (
     set_maintenance_execution_notes,
     set_maintenance_task_completion,
 )
-from apps.security.models import Incident
+from apps.security.models import Camera, Incident
+from apps.security.services import reconcile_facility_cameras
 from apps.users.models import Role, User
 from apps.users.serializers import UserSerializer
 
@@ -35,6 +36,8 @@ from .serializers import (
     AssetReadSerializer,
     AssetStatusInputSerializer,
     AssetWriteSerializer,
+    FacilityCameraRequirementInputSerializer,
+    FacilityCameraSerializer,
     FacilityReadSerializer,
     FaultInvestigationInputSerializer,
     FaultReadSerializer,
@@ -81,7 +84,12 @@ class FacilityViewSet(ScopedOperationsMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return self.visible_facilities().select_related(
             "created_from_project", "created_by"
-        ).annotate(asset_count=Count("assets", distinct=True)).prefetch_related(
+        ).annotate(
+            asset_count=Count("assets", distinct=True),
+            camera_count=Count(
+                "cameras", filter=Q(cameras__is_active=True), distinct=True
+            ),
+        ).prefetch_related(
             Prefetch(
                 "assignments",
                 queryset=FacilityAssignment.objects.filter(
@@ -114,6 +122,59 @@ class FacilityViewSet(ScopedOperationsMixin, viewsets.ReadOnlyModelViewSet):
                 "open_incidents": incidents.exclude(
                     status=Incident.Status.CLOSED
                 ).count(),
+            }
+        )
+
+    @extend_schema(
+        request=FacilityCameraRequirementInputSerializer,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=True, methods=["get", "put"], url_path="camera-requirement")
+    def camera_requirement(self, request, pk=None):
+        facility = self.get_object()
+        if request.method == "GET":
+            cameras = Camera.objects.filter(facility=facility).order_by("code")
+            camera_count = len(cameras)
+            required = facility.required_camera_count
+            return Response(
+                {
+                    "facility_id": str(facility.id),
+                    "required_camera_count": required,
+                    "previous_required_camera_count": required,
+                    "existing": camera_count,
+                    "created": 0,
+                    "surplus": max(0, camera_count - required) if required is not None else 0,
+                    "camera_count": camera_count,
+                    "created_camera_ids": [],
+                    "cameras": FacilityCameraSerializer(cameras, many=True).data,
+                }
+            )
+        payload = FacilityCameraRequirementInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            result = reconcile_facility_cameras(
+                facility_id=facility.id,
+                required=payload.validated_data["required_camera_count"],
+                actor=request.user,
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            raise _domain_conflict(exc) from exc
+        except IntegrityError as exc:
+            raise DomainConflict("A camera with this identity already exists.") from exc
+        created_ids = [str(camera.pk) for camera in result["created"]]
+        cameras = Camera.objects.filter(facility=facility).order_by("code")
+        return Response(
+            {
+                "facility_id": str(facility.id),
+                "required_camera_count": result["facility"].required_camera_count,
+                "previous_required_camera_count": result["previous_required"],
+                "existing": result["existing"],
+                "created": len(created_ids),
+                "surplus": result["surplus"],
+                "camera_count": result["existing"] + len(created_ids),
+                "created_camera_ids": created_ids,
+                "cameras": FacilityCameraSerializer(cameras, many=True).data,
             }
         )
 

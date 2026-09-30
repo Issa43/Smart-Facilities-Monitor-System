@@ -60,6 +60,9 @@ class Facility(BaseModel):
         choices=Status.choices,
         default=Status.OPERATIONAL,
     )
+    # NULL: not defined yet; 0: explicitly none. Reconciled into Cameras by
+    # apps.security.services.reconcile_facility_cameras.
+    required_camera_count = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta(BaseModel.Meta):
         indexes = [

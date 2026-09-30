@@ -1,4 +1,12 @@
-import type { Asset, Facility, Fault, Priority, Severity, WorkOrder } from '@/types'
+import type {
+  Asset,
+  Facility,
+  FacilityCameraRequirement,
+  Fault,
+  Priority,
+  Severity,
+  WorkOrder,
+} from '@/types'
 
 export interface FacilityDto {
   id: string
@@ -10,6 +18,8 @@ export interface FacilityDto {
   status: Facility['status']
   operations_manager_id: string | null
   asset_count?: number
+  required_camera_count?: number | null
+  camera_count?: number
   created_by_id: string
   created_at: string
   updated_at: string
@@ -100,7 +110,7 @@ export interface FaultDto {
   updated_at: string
 }
 
-const faultSeverityFromDto: Record<FaultDto['severity'], Severity> = {
+export const faultSeverityFromDto: Record<FaultDto['severity'], Severity> = {
   minor: 'low',
   moderate: 'medium',
   major: 'high',
@@ -144,6 +154,58 @@ export function facilityFromDto(dto: FacilityDto, assetCount = dto.asset_count ?
     assetCount,
     uptimePercent: null,
     operationsManagerId: dto.operations_manager_id,
+    requiredCameraCount: dto.required_camera_count ?? null,
+    cameraCount: dto.camera_count ?? 0,
+  }
+}
+
+export interface FacilityCameraDto {
+  id: string
+  facility_id: string
+  asset_id: string | null
+  code: string
+  name: string
+  zone: string
+  status: 'online' | 'offline' | 'degraded' | 'maintenance'
+  last_seen_at: string | null
+  created_at: string
+}
+
+export interface FacilityCameraRequirementDto {
+  facility_id: string
+  required_camera_count: number | null
+  previous_required_camera_count: number | null
+  existing: number
+  created: number
+  surplus: number
+  camera_count: number
+  created_camera_ids: string[]
+  cameras: FacilityCameraDto[]
+}
+
+export function facilityCameraRequirementFromDto(
+  dto: FacilityCameraRequirementDto,
+): FacilityCameraRequirement {
+  return {
+    facilityId: dto.facility_id,
+    requiredCameraCount: dto.required_camera_count,
+    previousRequiredCameraCount: dto.previous_required_camera_count,
+    existing: dto.existing,
+    created: dto.created,
+    surplus: dto.surplus,
+    cameraCount: dto.camera_count,
+    createdCameraIds: dto.created_camera_ids,
+    cameras: dto.cameras.map((camera) => ({
+      id: camera.id,
+      facilityId: camera.facility_id,
+      assetId: camera.asset_id,
+      code: camera.code,
+      name: camera.name,
+      zone: camera.zone,
+      status: camera.status,
+      lastSeenAt: camera.last_seen_at,
+      createdAt: camera.created_at,
+    })),
   }
 }
 

@@ -9,6 +9,7 @@ import {
   ASSET_STATUS_TONE,
   FAULT_STATUS_LABELS,
   FAULT_STATUS_TONE,
+  faultTypeLabel,
   SEVERITY_LABELS,
   SEVERITY_TONE,
   WORK_ORDER_STATUS_LABELS,
@@ -378,7 +379,7 @@ export function AssetDetailPage() {
                         tone: FAULT_STATUS_TONE[fault.status],
                         title: (
                           <>
-                            {fault.faultType}{' '}
+                            {faultTypeLabel(fault.faultType)}{' '}
                             <Badge tone={SEVERITY_TONE[fault.severity]}>
                               {SEVERITY_LABELS[fault.severity]}
                             </Badge>

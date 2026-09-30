@@ -18,6 +18,8 @@ export const facilities: Facility[] = [
     assetCount: 6,
     uptimePercent: 98.4,
     operationsManagerId: REEM,
+    requiredCameraCount: null,
+    cameraCount: 0,
   },
   {
     id: 'fac-002',
@@ -30,6 +32,8 @@ export const facilities: Facility[] = [
     assetCount: 4,
     uptimePercent: 92.1,
     operationsManagerId: REEM,
+    requiredCameraCount: null,
+    cameraCount: 0,
   },
   {
     id: 'fac-003',
@@ -42,6 +46,8 @@ export const facilities: Facility[] = [
     assetCount: 5,
     uptimePercent: 99.2,
     operationsManagerId: REEM,
+    requiredCameraCount: null,
+    cameraCount: 0,
   },
   {
     id: 'fac-004',
@@ -54,6 +60,8 @@ export const facilities: Facility[] = [
     assetCount: 4,
     uptimePercent: 87.6,
     operationsManagerId: NOURA,
+    requiredCameraCount: null,
+    cameraCount: 0,
   },
   {
     id: 'fac-005',
@@ -66,6 +74,8 @@ export const facilities: Facility[] = [
     assetCount: 3,
     uptimePercent: 96.8,
     operationsManagerId: NOURA,
+    requiredCameraCount: null,
+    cameraCount: 0,
   },
 ]
 

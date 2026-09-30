@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Camera, Video, VideoOff } from 'lucide-react'
+import { Camera, Video, VideoOff, Wrench } from 'lucide-react'
 import { formatNumber, formatPercent } from '@/lib/format'
 import { qk } from '@/lib/queryKeys'
 import { listCameras, listSecurityFacilities, type SecurityCamera } from '@/api/security'
@@ -12,6 +12,8 @@ import { Alert, ErrorState, SkeletonLines, StateCard } from '@/components/ui/Fee
 import { KpiCard } from '@/components/ui/KpiCard/KpiCard'
 import { KpiGrid, Section } from '@/components/ui/Display/Display'
 import { Button } from '@/components/ui/Button/Button'
+import { useCurrentUser } from '@/context/AuthContext'
+import { CameraMaintenanceReportModal } from '../CameraMaintenanceReportModal'
 import styles from './Emergency.module.css'
 
 type CameraRow = SecurityCamera & { facilityName: string }
@@ -131,6 +133,10 @@ function LiveDetectorFeeds() {
 }
 
 export function CameraMonitoringPage() {
+  const user = useCurrentUser()
+  // Mirrors the server's camera.maintenance_report grant; the API still enforces it.
+  const canReportMaintenance = user.role === 'security_officer' || user.role === 'super_admin'
+  const [reportCamera, setReportCamera] = useState<SecurityCamera | null>(null)
   const camerasQuery = useQuery({ queryKey: ['security', 'cameras'], queryFn: listCameras })
   const facilitiesQuery = useQuery({
     queryKey: qk.facilities.list,
@@ -299,11 +305,23 @@ export function CameraMonitoringPage() {
                     {camera.online ? 'متصلة' : 'خارج الخدمة'}
                   </Badge>
                 </div>
+                {canReportMaintenance && (
+                  <Button
+                    variant="subtle"
+                    size="sm"
+                    style={{ marginTop: 10 }}
+                    onClick={() => setReportCamera(camera)}
+                  >
+                    <Wrench size={14} /> الإبلاغ عن صيانة
+                  </Button>
+                )}
               </div>
             </article>
           ))}
         </div>
       )}
+
+      <CameraMaintenanceReportModal camera={reportCamera} onClose={() => setReportCamera(null)} />
     </>
   )
 }

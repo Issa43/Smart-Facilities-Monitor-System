@@ -4,7 +4,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import type { Fault, FaultStatus, Severity } from '@/types'
-import { FAULT_STATUS_LABELS, FAULT_STATUS_TONE, SEVERITY_LABELS, SEVERITY_TONE } from '@/types'
+import {
+  FAULT_STATUS_LABELS,
+  FAULT_STATUS_TONE,
+  faultTypeLabel,
+  SEVERITY_LABELS,
+  SEVERITY_TONE,
+} from '@/types'
 import { formatDateTime, formatNumber, formatRelative } from '@/lib/format'
 import { qk } from '@/lib/queryKeys'
 import {
@@ -86,7 +92,11 @@ export function FaultTrackingPage() {
   const { query, setQuery, filter, setFilter, filtered } = useListFilter<Fault, SeverityFilter>(
     faultsQuery.data,
     {
-      searchText: useCallback((f: Fault) => `${f.reference} ${f.faultType} ${f.description}`, []),
+      searchText: useCallback(
+        (f: Fault) =>
+          `${f.reference} ${f.faultType} ${faultTypeLabel(f.faultType)} ${f.description}`,
+        [],
+      ),
       matchesFilter: useCallback(
         (f: Fault, v: SeverityFilter) => (v === 'open' ? f.status !== 'closed' : f.severity === v),
         [],
@@ -251,7 +261,7 @@ export function FaultTrackingPage() {
             sortValue: (f) => f.reference,
             render: (f) => (
               <div>
-                <div style={{ fontWeight: 700 }}>{f.faultType}</div>
+                <div style={{ fontWeight: 700 }}>{faultTypeLabel(f.faultType)}</div>
                 <div
                   className="mono"
                   style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}

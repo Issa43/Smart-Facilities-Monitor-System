@@ -29,6 +29,7 @@ from apps.security.services import (
     dismiss_security_alert,
     record_incident_action,
     record_incident_note,
+    report_camera_maintenance,
     set_incident_action_completion,
     review_security_alert,
     start_incident_investigation,
@@ -60,6 +61,8 @@ from .serializers import (
     IncidentNoteInputSerializer,
     IncidentNoteReadSerializer,
     SecurityFacilitySerializer,
+    CameraMaintenanceReportInputSerializer,
+    CameraMaintenanceReportSerializer,
     CameraSerializer,
     SafetyDocumentSerializer,
 )
@@ -514,7 +517,10 @@ class SecurityFacilityViewSet(ScopedSecurityMixin, viewsets.ReadOnlyModelViewSet
 
 
 class CameraViewSet(ScopedSecurityMixin, viewsets.ReadOnlyModelViewSet):
-    permission_required = "alert.view"
+    permission_required = {
+        "default": "alert.view",
+        "report_maintenance": "camera.maintenance_report",
+    }
     serializer_class = CameraSerializer
     filterset_fields = ["facility", "status", "zone"]
     search_fields = ["code", "name", "zone"]
@@ -522,6 +528,32 @@ class CameraViewSet(ScopedSecurityMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return Camera.objects.filter(facility__in=self.visible_facilities()).select_related("facility", "asset")
+
+    @extend_schema(
+        request=CameraMaintenanceReportInputSerializer,
+        responses=CameraMaintenanceReportSerializer,
+    )
+    @action(detail=True, methods=["post"], url_path="report-maintenance")
+    def report_maintenance(self, request, pk=None):
+        camera = self.get_object()
+        payload = CameraMaintenanceReportInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            fault, created = report_camera_maintenance(
+                camera_id=camera.id,
+                actor=request.user,
+                request=request,
+                **payload.validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise _domain_conflict(exc) from exc
+        data = CameraMaintenanceReportSerializer(fault).data
+        data["camera_id"] = str(camera.id)
+        data["created"] = created
+        return Response(
+            data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 class SafetyDocumentViewSet(ScopedSecurityMixin, viewsets.ModelViewSet):

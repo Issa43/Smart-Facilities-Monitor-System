@@ -94,6 +94,53 @@ def _argb(hex_color):
     return "FF" + hex_color.lstrip("#").upper()
 
 
+# Security reports keep the family structure above but carry the Security
+# identity: the same palette roles in a restrained red, and their own name in
+# the header band and page frame. Every other module keeps the shared palette.
+SECURITY_REPORT_MODULES = {
+    Report.Module.SECURITY,
+    Report.Module.ALERTS,
+    Report.Module.RESPONSE,
+}
+SECURITY_REPORT_TITLES = {
+    Report.Module.SECURITY: "Security Incidents Report",
+    Report.Module.ALERTS: "Security Alerts Report",
+    Report.Module.RESPONSE: "Incident Response Report",
+}
+SECURITY_COLUMN_LABELS = {
+    "incident_number": "Incident Number",
+    "incident__incident_number": "Incident Number",
+    "taken_by_id": "Taken By (User ID)",
+    "is_false_positive": "False Positive",
+}
+REPORT_PALETTE = {
+    "accent_dark": REPORT_ACCENT_DARK,
+    "accent": REPORT_ACCENT,
+    "accent_light": REPORT_ACCENT_LIGHT,
+    "accent_lighter": REPORT_ACCENT_LIGHTER,
+    "border": REPORT_BORDER,
+    "text": REPORT_TEXT,
+    "muted": REPORT_MUTED,
+}
+SECURITY_REPORT_PALETTE = {
+    "accent_dark": "#7F1D1D",       # title band, section headings
+    "accent": "#B42318",            # table headers, rules
+    "accent_light": "#FBEDEC",      # metadata / summary panels
+    "accent_lighter": "#FDF7F6",    # zebra striping
+    "border": "#E6C4C0",            # table grid and panel outlines
+    "text": "#2B2424",              # body copy (neutral, not red)
+    "muted": "#6B6262",             # captions, footer
+}
+
+
+def _report_identity(module):
+    """Palette and page-frame name for a non-construction report module."""
+
+    if module in SECURITY_REPORT_MODULES:
+        return SECURITY_REPORT_PALETTE, "Security Report"
+    return REPORT_PALETTE, "Operations Report"
+
+
 OPERATIONS_REPORT_MODULES = {
     Report.Module.ASSETS,
     Report.Module.MAINTENANCE,
@@ -882,6 +929,8 @@ def _operations_column_label(column, module=None):
     # record id, so the operations label would mislabel the column.
     if column == "id" and module is not None and module not in OPERATIONS_REPORT_MODULES:
         return "ID"
+    if module in SECURITY_REPORT_MODULES and column in SECURITY_COLUMN_LABELS:
+        return SECURITY_COLUMN_LABELS[column]
     return OPERATIONS_COLUMN_LABELS.get(
         column,
         column.replace("__", " ").replace("_", " ").title(),
@@ -902,10 +951,29 @@ def _operations_report_metadata(report, title, row_count):
         period = f"Through {date_to}"
     else:
         period = "All available history"
+    facility = parameters.get("facility_id") or "Not specified"
+    if report.module in SECURITY_REPORT_MODULES and parameters.get("facility_id"):
+        from uuid import UUID
+
+        from apps.facilities.models import Facility
+
+        try:
+            facility_pk = UUID(str(parameters["facility_id"]))
+        except ValueError:
+            facility_pk = None
+        name = (
+            Facility.all_objects.filter(pk=facility_pk)
+            .values_list("name", flat=True)
+            .first()
+            if facility_pk
+            else None
+        )
+        if name:
+            facility = name
     return {
         "title": title,
         "period": period,
-        "facility": parameters.get("facility_id") or "Not specified",
+        "facility": facility,
         "status": parameters.get("status") or "All statuses",
         "generated_at": report.updated_at,
         "generated_by": report.created_by.full_name,
@@ -967,14 +1035,15 @@ def _render_operations_pdf(report, title, columns, rows):
     margin = 12 * mm
     content_width = page_width - (2 * margin)
     metadata = _operations_report_metadata(report, title, len(rows))
+    palette, report_name = _report_identity(report.module)
 
-    accent = colors.HexColor(REPORT_ACCENT)
-    accent_dark = colors.HexColor(REPORT_ACCENT_DARK)
-    accent_light = colors.HexColor(REPORT_ACCENT_LIGHT)
-    accent_lighter = colors.HexColor(REPORT_ACCENT_LIGHTER)
-    border = colors.HexColor(REPORT_BORDER)
-    text_color = colors.HexColor(REPORT_TEXT)
-    muted = colors.HexColor(REPORT_MUTED)
+    accent = colors.HexColor(palette["accent"])
+    accent_dark = colors.HexColor(palette["accent_dark"])
+    accent_light = colors.HexColor(palette["accent_light"])
+    accent_lighter = colors.HexColor(palette["accent_lighter"])
+    border = colors.HexColor(palette["border"])
+    text_color = colors.HexColor(palette["text"])
+    muted = colors.HexColor(palette["muted"])
 
     def visual_text(value):
         text = str(value)
@@ -1055,7 +1124,7 @@ def _render_operations_pdf(report, title, columns, rows):
 
     story = [
         Paragraph(visual_text(title), title_style),
-        Paragraph("SFLMS Operations Report", subtitle_style),
+        Paragraph(f"SFLMS {report_name}", subtitle_style),
     ]
     metadata_rows = [
         [
@@ -1119,6 +1188,10 @@ def _render_operations_pdf(report, title, columns, rows):
     if rows and columns:
         wide_keys = {"description", "reason", "root_cause", "resolution", "location"}
         medium_keys = {"name", "asset_type", "category", "serial_number", "fault_type"}
+        if report.module in SECURITY_REPORT_MODULES:
+            # Keep incident numbers on one line and give free text room.
+            wide_keys = wide_keys | {"action_taken", "notes"}
+            medium_keys = medium_keys | {"incident_number", "incident__incident_number"}
         weights = [
             2.7
             if key in wide_keys
@@ -1184,7 +1257,7 @@ def _render_operations_pdf(report, title, columns, rows):
         canvas.saveState()
         canvas.setFont(font_name, 7)
         canvas.setFillColor(muted)
-        canvas.drawString(margin, page_height - (8 * mm), "SFLMS | Operations Report")
+        canvas.drawString(margin, page_height - (8 * mm), f"SFLMS | {report_name}")
         canvas.drawRightString(
             page_width - margin,
             page_height - (8 * mm),
@@ -1635,7 +1708,8 @@ def _render_construction_xlsx(dataset):
     return output.getvalue()
 
 
-def _operations_xlsx_styles():
+def _operations_xlsx_styles(palette=None):
+    palette = palette or REPORT_PALETTE
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -1649,22 +1723,22 @@ def _operations_xlsx_styles():
         '<fonts count="4">'
         '<font><sz val="10"/><name val="Calibri"/><family val="2"/></font>'
         '<font><b/><color rgb="FFFFFFFF"/><sz val="16"/><name val="Calibri"/></font>'
-        f'<font><color rgb="{_argb(REPORT_ACCENT_LIGHT)}"/><sz val="10"/><name val="Calibri"/></font>'
+        f'<font><color rgb="{_argb(palette["accent_light"])}"/><sz val="10"/><name val="Calibri"/></font>'
         '<font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Calibri"/></font>'
         '</fonts>'
         '<fills count="5">'
         '<fill><patternFill patternType="none"/></fill>'
         '<fill><patternFill patternType="gray125"/></fill>'
-        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT_DARK)}"/><bgColor indexed="64"/></patternFill></fill>'
-        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT)}"/><bgColor indexed="64"/></patternFill></fill>'
-        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(REPORT_ACCENT_LIGHT)}"/><bgColor indexed="64"/></patternFill></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(palette["accent_dark"])}"/><bgColor indexed="64"/></patternFill></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(palette["accent"])}"/><bgColor indexed="64"/></patternFill></fill>'
+        f'<fill><patternFill patternType="solid"><fgColor rgb="{_argb(palette["accent_light"])}"/><bgColor indexed="64"/></patternFill></fill>'
         '</fills>'
         '<borders count="2">'
         '<border><left/><right/><top/><bottom/><diagonal/></border>'
-        f'<border><left style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></left>'
-        f'<right style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></right>'
-        f'<top style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></top>'
-        f'<bottom style="thin"><color rgb="{_argb(REPORT_BORDER)}"/></bottom><diagonal/></border>'
+        f'<border><left style="thin"><color rgb="{_argb(palette["border"])}"/></left>'
+        f'<right style="thin"><color rgb="{_argb(palette["border"])}"/></right>'
+        f'<top style="thin"><color rgb="{_argb(palette["border"])}"/></top>'
+        f'<bottom style="thin"><color rgb="{_argb(palette["border"])}"/></bottom><diagonal/></border>'
         '</borders>'
         '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
         '<cellXfs count="12">'
@@ -1744,7 +1818,10 @@ def _render_operations_xlsx(report, title, columns, rows):
             '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
             '</Relationships>',
         )
-        archive.writestr("xl/styles.xml", _operations_xlsx_styles())
+        archive.writestr(
+            "xl/styles.xml",
+            _operations_xlsx_styles(_report_identity(report.module)[0]),
+        )
         archive.writestr("xl/worksheets/sheet1.xml", worksheet)
     return output.getvalue()
 
@@ -2350,6 +2427,8 @@ def generate_report(*, report_id):
                     }
                 )
         title = configuration.get("title") or report.type
+        if not configuration.get("title") and report.module in SECURITY_REPORT_MODULES:
+            title = SECURITY_REPORT_TITLES[report.module]
         if report.module == Report.Module.CONSTRUCTION:
             dataset = build_construction_report_dataset(
                 report,
